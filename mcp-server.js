@@ -2,7 +2,7 @@
 const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
 const { z } = require('zod');
-const { loadManifest, findService, fetchServiceDefinition, extractInputFields, searchServices } = require('./lib/aws-client');
+const { PARTITIONS, loadManifest, findService, fetchServiceDefinition, extractInputFields, searchServices } = require('./lib/aws-client');
 const EstimateBuilder = require('./lib/estimate-builder');
 
 const estimates = new Map();
@@ -15,9 +15,16 @@ const server = new McpServer({
 server.tool(
   'search_services',
   'Search AWS services available in the calculator. Returns service keys and names. Use this to find the correct service key before adding it to an estimate. Supports multiple comma-separated search terms in a single call (e.g. "lambda, s3, api gateway, cloudwatch").',
-  { query: z.string().describe('One or more search terms, comma-separated (e.g. "lambda, s3, personalize, api gateway, cloudwatch")') },
-  async ({ query }) => {
-    const manifest = await loadManifest();
+  {
+    query: z.string().describe('One or more search terms, comma-separated (e.g. "lambda, s3, personalize, api gateway, cloudwatch")'),
+    partition: z.string().optional().describe('AWS partition to search in (default: "aws"). Valid values: "aws", "aws-iso", "aws-iso-b"'),
+  },
+  async ({ query, partition }) => {
+    const p = partition || 'aws';
+    if (!PARTITIONS[p]) {
+      return { content: [{ type: 'text', text: `Unknown partition '${p}'. Valid partitions: ${Object.keys(PARTITIONS).join(', ')}` }], isError: true };
+    }
+    const manifest = await loadManifest(p);
     const results = searchServices(manifest, query);
     return { content: [{ type: 'text', text: JSON.stringify(results, null, 2) }] };
   }
@@ -26,9 +33,15 @@ server.tool(
 server.tool(
   'get_service_fields',
   'Get the input fields for one or more AWS services. Returns field IDs, types, labels, and valid options. Use this to discover what configuration a service accepts before adding it to an estimate. The field IDs returned here are the exact keys to use in add_service config. Accepts multiple comma-separated service keys.',
-  { service: z.string().describe('One or more service keys, comma-separated (e.g. "aWSLambda, amazonS3, stepFunctionStandard, amazonApiGateway")') },
-  async ({ service }) => {
-    const manifest = await loadManifest();
+  { service: z.string().describe('One or more service keys, comma-separated (e.g. "aWSLambda, amazonS3, stepFunctionStandard, amazonApiGateway")'),
+    partition: z.string().optional().describe('AWS partition to fetch from (default: "aws"). Valid values: "aws", "aws-iso", "aws-iso-b"'),
+  },
+  async ({ service, partition }) => {
+    const p = partition || 'aws';
+    if (!PARTITIONS[p]) {
+      return { content: [{ type: 'text', text: `Unknown partition '${p}'. Valid partitions: ${Object.keys(PARTITIONS).join(', ')}` }], isError: true };
+    }
+    const manifest = await loadManifest(p);
     const keys = service.split(',').map(s => s.trim()).filter(Boolean);
     const results = [];
     const errors = [];
@@ -37,7 +50,7 @@ server.tool(
       const svc = findService(manifest, key);
       if (!svc) { errors.push(`Service "${key}" not found.`); continue; }
 
-      const definition = await fetchServiceDefinition(manifest, svc.key);
+      const definition = await fetchServiceDefinition(manifest, svc.key, p);
       if (!definition) { errors.push(`Failed to fetch definition for "${svc.key}".`); continue; }
 
       const fields = extractInputFields(definition);
@@ -54,9 +67,16 @@ server.tool(
 server.tool(
   'create_estimate',
   'Create a new empty estimate. Returns an estimate ID to use with add_service and export_estimate.',
-  { name: z.string().optional().describe('Name for the estimate (default: "My Estimate")') },
-  async ({ name }) => {
-    const estimate = new EstimateBuilder(name);
+  {
+    name: z.string().optional().describe('Name for the estimate (default: "My Estimate")'),
+    partition: z.string().optional().describe('AWS partition for this estimate (default: "aws"). Valid values: "aws", "aws-iso", "aws-iso-b"'),
+  },
+  async ({ name, partition }) => {
+    const p = partition || undefined;
+    if (p && !PARTITIONS[p]) {
+      return { content: [{ type: 'text', text: `Unknown partition '${p}'. Valid partitions: ${Object.keys(PARTITIONS).join(', ')}` }], isError: true };
+    }
+    const estimate = new EstimateBuilder(name, p);
     estimates.set(estimate.id, estimate);
     return { content: [{ type: 'text', text: JSON.stringify({ estimate_id: estimate.id, name: estimate.name }) }] };
   }
