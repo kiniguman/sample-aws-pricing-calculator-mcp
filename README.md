@@ -1,12 +1,31 @@
 # AWS Pricing Calculator MCP Server
 
-[Model Context Protocol](https://modelcontextprotocol.io) server that programmatically builds AWS pricing estimates and generates shareable [calculator.aws](https://calculator.aws) URLs. Supports all 436+ AWS services via live service definitions from the AWS Calculator CDN.
+[Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that programmatically creates, reads, updates [AWS Pricing Calculator](https://calculator.aws/#/estimate) estimates through natural language.
+
+## Key Features
+
+- **Creating Estimates**: Supports all 436+ AWS services via live service definitions from the AWS Calculator CDN
+- **Estimate Management**: Export and modify existing AWS Pricing Calculator estimates (e.g. swap AWS regions)
+- **Batch Import**: Create estimates from Excel/CSV files via LLM-assisted parsing
+- **No AWS Credentials Required**: Works without AWS account access
+
+## Example
+
+Prompt:
+> Create an AWS Pricing Calculator estimate for a common Wordpress environment on AWS (Dev, Quality, Production).
+
+Output:
+![](example1.png)
 
 ## Quick Start
 
+Requires [Node.js®](https://nodejs.org/en/download).
+
 ```bash
+git clone https://github.com/aws-samples/sample-aws-pricing-calculator-mcp.git
+cd sample-aws-pricing-calculator-mcp
 npm install
-node mcp-server.js
+npm run build
 ```
 
 The server communicates over stdio using the MCP protocol — it's designed to be used by MCP-compatible clients (e.g. Claude, Kiro), not called directly via HTTP.
@@ -20,7 +39,7 @@ Add to your MCP client config (e.g. `~/.kiro/settings/mcp.json`):
   "mcpServers": {
     "aws-pricing-calculator-mcp-server": {
       "command": "node",
-      "args": ["/path/to/sample-aws-pricing-calculator-mcp/mcp-server.js"]
+      "args": ["/path/to/sample-aws-pricing-calculator-mcp/dist/mcp-server.js"]
     }
   }
 }
@@ -136,12 +155,13 @@ All optional:
 | `AWS_MANIFEST_URL` | CloudFront manifest URL | AWS service catalog |
 | `AWS_SAVE_URL` | CloudFront save URL | Estimate persistence |
 
-## Caveats
+## Known Issues
 
 - The CloudFront save/manifest APIs are undocumented and may change without notice.
 - Callers must use the correct AWS field IDs — discover them via `get_service_fields`.
 - Estimates live in memory and don't persist across restarts.
-- No local cost calculation — pricing is computed by AWS when viewing the shareable link.
+- No local cost calculation — pricing is computed by AWS when viewing the shareable link -> Press `Update estimate`.
+- Only https://calculator.aws/ supported for now
 
 ## Security
 
@@ -171,6 +191,23 @@ These are the same public, unauthenticated endpoints used by the [calculator.aws
 
 See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for information on reporting security issues.
 
+## AWS MCP Servers Comparison: Pricing & Cost Management
+
+| | **AWS Pricing Calculator MCP (This)** | **[AWS Billing & Cost Management MCP](https://github.com/awslabs/mcp#-cost--operations)** | **[AWS Pricing MCP](https://github.com/awslabs/mcp#-cost--operations)** |
+|---|---|---|---|
+| **Purpose** | Build shareable cost estimates for new workloads | Analyze historical spend & optimize existing costs | Query real-time pricing data from Price List API |
+| **Data Source** | AWS Pricing Calculator (calculator.aws) | Cost Explorer, Cost Optimization Hub, Compute Optimizer, Savings Plans, Budgets, Storage Lens | AWS Price List Bulk API |
+| **Output** | Shareable calculator.aws URL with full estimate | Natural language cost insights, savings recommendations | Raw pricing data, cost reports (markdown/CSV) |
+| **Use Case** | "What will this new architecture cost?" | "Where am I overspending today?" | "What's the per-unit price of X?" |
+| **Scope** | Forward-looking estimates | Historical & current spend | Current catalog pricing |
+| **AWS Credentials** | Not required (uses public calculator API) | Required (reads your billing data) | Required (`pricing:*` permissions) |
+
+TL;DR: Use the Pricing Calculator MCP to build estimates for proposals, the Billing & Cost Management MCP to analyze/optimize what you're already spending, and the Pricing MCP for granular unit-price lookups and IaC cost analysis.
+
 ## License
 
 This library is licensed under the MIT-0 License. See the [LICENSE](LICENSE) file.
+
+## Disclaimer
+
+Before using an MCP Server, you should consider conducting your own independent assessment to ensure that your use would comply with your own specific security and quality control practices and standards, as well as the laws, rules, and regulations that govern you and your content.
