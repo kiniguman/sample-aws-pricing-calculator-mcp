@@ -4,7 +4,7 @@
 const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
 const { z } = require('zod');
-const { PARTITIONS, loadManifest, findService, fetchServiceDefinition, extractInputFields, searchServices } = require('./lib/aws-client');
+const { PARTITIONS, loadManifest, findService, fetchServiceDefinition, extractInputFields, searchServices, fetchEstimate, estimateToMarkdown } = require('./lib/aws-client');
 const EstimateBuilder = require('./lib/estimate-builder');
 
 const estimates = new Map();
@@ -232,6 +232,31 @@ server.tool(
       return { content: [{ type: 'text', text: JSON.stringify({ sharable_url: result.shareableUrl, aws_estimate_id: result.estimateId }) }] };
     } catch (err) {
       return { content: [{ type: 'text', text: `Export failed: ${err.message}` }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  'import_estimate',
+  'Download an existing AWS Pricing Calculator estimate by URL or ID. Returns the estimate in JSON (raw, for modifications like region swaps) or Markdown (for LLM consumption, summaries, funding recommendations).',
+  {
+    estimate_id: z.string().describe('Estimate ID or full calculator.aws URL (e.g. "bedb9a10..." or "https://calculator.aws/#/estimate?id=bedb9a10...")'),
+    format: z.enum(['json', 'markdown']).optional().describe('Output format: "json" for raw data (default), "markdown" for LLM-friendly summary'),
+  },
+  async ({ estimate_id, format }) => {
+    // Extract ID from URL if needed
+    let id = estimate_id;
+    const urlMatch = estimate_id.match(/[?&]id=([a-f0-9]+)/);
+    if (urlMatch) id = urlMatch[1];
+
+    try {
+      const data = await fetchEstimate(id);
+      const output = (format === 'markdown')
+        ? estimateToMarkdown(data)
+        : JSON.stringify(data, null, 2);
+      return { content: [{ type: 'text', text: output }] };
+    } catch (err) {
+      return { content: [{ type: 'text', text: `Import failed: ${err.message}` }], isError: true };
     }
   }
 );

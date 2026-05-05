@@ -4,9 +4,9 @@
 
 ## Key Features
 
-- **Creating Estimates**: Supports all 436+ AWS services via live service definitions from the AWS Calculator CDN
-- **Estimate Management**: Export and modify existing AWS Pricing Calculator estimates (e.g. swap AWS regions)
-- **Batch Import**: Create estimates from Excel/CSV files via LLM-assisted parsing
+- **Creating Estimates**: Supports all AWS services via live service definitions from the AWS Calculator CDN
+- **Importing Estimates**: Download existing estimates by URL/ID as JSON (for modifications e.g. swap AWS regions) or Markdown (for LLM analysis)
+- **Batch Processing**: Create estimates from Excel/CSV files via LLM-assisted parsing
 - **No AWS Credentials Required**: Works without AWS account access
 
 ## Example
@@ -54,6 +54,7 @@ Add to your MCP client config (e.g. `~/.kiro/settings/mcp.json`):
 | `create_estimate` | Create a new empty estimate. Returns an estimate ID. |
 | `add_service` | Add one or more services to an estimate with config values. Supports batch mode. |
 | `export_estimate` | Export an estimate to calculator.aws and get a shareable URL. |
+| `import_estimate` | Download an existing estimate by URL or ID. Returns JSON (raw) or Markdown. |
 
 ## Project Structure
 
