@@ -1,6 +1,6 @@
 {
   "name": "sample-aws-pricing-calculator-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP server for creating, reading, updating AWS Pricing Calculator estimates through natural language.",
   "license": "MIT-0",
   "main": "mcp-server.js",

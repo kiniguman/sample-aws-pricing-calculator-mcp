@@ -4,16 +4,12 @@
 const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
 const { z } = require('zod');
-const { PARTITIONS, loadManifest, findService, fetchServiceDefinition, extractInputFields, searchServices, fetchEstimate, estimateToMarkdown } = require('./lib/aws-client');
+const { PARTITIONS, loadManifest, findService, fetchServiceDefinition, extractInputFields, enrichFieldsWithMetadata, searchServices, fetchEstimate, estimateToMarkdown } = require('./lib/aws-client');
 const EstimateBuilder = require('./lib/estimate-builder');
 
 const estimates = new Map();
 
 const META_KEYS = new Set(['region', 'description']);
-const EC2_KEYS = new Set([
-  'tenancy', 'pricingStrategy', 'utilization', 'selectedOS', 'instanceType',
-  'quantity', 'storageType', 'storageAmount', 'snapshotFrequency', 'dataTransferForEC2',
-]);
 
 function levenshtein(a, b) {
   const m = a.length, n = b.length;
@@ -54,27 +50,81 @@ async function validateConfigKeys(serviceKey, config, partition) {
     const def = await fetchServiceDefinition(manifest, svc.key, partition || 'aws');
     if (!def) return null;
 
-    const validIds = extractInputFields(def).map(f => f.id);
+    const fields = extractInputFields(def);
+    const validIds = fields.map(f => f.id);
     const validSet = new Set(validIds);
     const invalid = configKeys.filter(k => !validSet.has(k));
-    if (invalid.length === 0) return null;
+    if (invalid.length > 0) {
+      const lines = invalid.map(k => {
+        const suggestions = suggestMatch(k, validIds);
+        return suggestions.length
+          ? `  "${k}" — did you mean: ${suggestions.map(s => `"${s}"`).join(', ')}?`
+          : `  "${k}" — no close match found`;
+      });
+      return `Invalid field IDs for ${svc.key}:\n${lines.join('\n')}\nUse get_service_fields to discover valid field IDs.`;
+    }
 
-    const lines = invalid.map(k => {
-      const suggestions = suggestMatch(k, validIds);
-      return suggestions.length
-        ? `  "${k}" — did you mean: ${suggestions.map(s => `"${s}"`).join(', ')}?`
-        : `  "${k}" — no close match found`;
-    });
-    return `Invalid field IDs for ${svc.key}:\n${lines.join('\n')}\nUse get_service_fields to discover valid field IDs.`;
+    // Validate selector values within columnFormIPM fields
+    const enriched = await enrichFieldsWithMetadata(def, fields);
+    const selectorErrors = [];
+    for (const field of enriched) {
+      if (field.type !== 'columnFormIPM' || !field.selectorValues) continue;
+      const configVal = config[field.id];
+      if (!configVal || !configVal.value || !Array.isArray(configVal.value)) continue;
+
+      for (const row of configVal.value) {
+        for (const [selectorId, allowedValues] of Object.entries(field.selectorValues)) {
+          if (!allowedValues || allowedValues.length === 0) continue;
+          const cell = row[selectorId];
+          if (!cell) continue;
+          const cellValue = typeof cell === 'object' && cell.value !== undefined ? cell.value : cell;
+          if (typeof cellValue !== 'string') continue;
+          if (!allowedValues.includes(cellValue)) {
+            const suggestions = suggestMatch(cellValue, allowedValues);
+            const hint = suggestions.length
+              ? ` Did you mean: ${suggestions.map(s => `"${s}"`).join(', ')}?`
+              : '';
+            selectorErrors.push(`  Field "${field.id}", selector "${selectorId}": "${cellValue}" is not valid.${hint}\n    Allowed: ${allowedValues.slice(0, 10).join(', ')}${allowedValues.length > 10 ? ` ... (${allowedValues.length} total)` : ''}`);
+          }
+        }
+      }
+    }
+    if (selectorErrors.length > 0) {
+      return `Invalid selector values for ${svc.key}:\n${selectorErrors.join('\n')}`;
+    }
+
+    return null;
   } catch {
     return null; // validation is best-effort; don't block on fetch failures
   }
 }
 
+const pkg = require('./package.json');
+
 const server = new McpServer({
-  name: 'aws-calculator',
-  version: '1.0.0',
+  name: pkg.name,
+  version: pkg.version,
 });
+
+server.tool(
+  'get_server_info',
+  'Get version and capability information about this MCP server.',
+  {},
+  async () => {
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          name: pkg.name,
+          version: pkg.version,
+          description: pkg.description,
+          tools: ['search_services', 'get_service_fields', 'create_estimate', 'add_service', 'export_estimate', 'import_estimate', 'get_server_info'],
+          partitions: Object.keys(PARTITIONS),
+        }, null, 2),
+      }],
+    };
+  }
+);
 
 server.tool(
   'search_services',
@@ -96,7 +146,7 @@ server.tool(
 
 server.tool(
   'get_service_fields',
-  'Get the input fields for one or more AWS services. Returns field IDs, types, labels, and valid options. Use this to discover what configuration a service accepts before adding it to an estimate. The field IDs returned here are the exact keys to use in add_service config. Accepts multiple comma-separated service keys.',
+  'Get the input fields for one or more AWS services. Returns field IDs, types, labels, and valid options. Use this to discover what configuration a service accepts before adding it to an estimate. The field IDs returned here are the exact keys to use in add_service config. Accepts multiple comma-separated service keys. IMPORTANT: When duplicate fields exist with version suffixes (e.g. fieldName and fieldName_v2), ALWAYS use the highest version — it maps to the latest configuration path. Ignore lower versions.',
   { service: z.string().describe('One or more service keys, comma-separated (e.g. "aWSLambda, amazonS3, stepFunctionStandard, amazonApiGateway")'),
     partition: z.string().optional().describe('AWS partition to fetch from (default: "aws"). Valid values: "aws", "aws-iso", "aws-iso-b"'),
   },
@@ -118,7 +168,8 @@ server.tool(
       if (!definition) { errors.push(`Failed to fetch definition for "${svc.key}".`); continue; }
 
       const fields = extractInputFields(definition);
-      results.push({ serviceCode: svc.key, serviceName: svc.name, fields });
+      const enriched = await enrichFieldsWithMetadata(definition, fields);
+      results.push({ serviceCode: svc.key, serviceName: svc.name, fields: enriched });
     }
 
     const output = errors.length
@@ -164,9 +215,14 @@ Amazon EC2 (ec2Enhancement) has special config fields handled automatically:
 - "selectedOS": operating system. Default: "linux". Options: "linux", "windows", "rhel", "suse", etc.
 - "tenancy": "shared" (default), "dedicated", or "host"
 - "pricingStrategy": see above
-- "storageType": EBS volume type (e.g. "Storage General Purpose gp3 GB Mo")
+- "storageType": EBS volume type. Default: "Storage General Purpose gp3 GB Mo". Options: "Storage General Purpose gp3 GB Mo" (gp3), "Storage General Purpose GB Mo" (gp2), "Storage Provisioned IOPS GB Mo" (io1), "Storage Provisioned IOPS io2 GB month" (io2), "Storage Throughput Optimized HDD GB Mo" (st1), "Storage Cold HDD GB Mo" (sc1), "Storage Magnetic GB Mo" (magnetic)
 - "storageAmount": EBS storage, e.g. {"value": "30", "unit": "gb|NA"}
 - "snapshotFrequency": snapshot frequency, e.g. "0" for none
+- "gp3Iops": gp3 provisioned IOPS (e.g. "5000"). Auto-sets storageType to gp3 if not specified.
+- "gp3Throughput": gp3 provisioned throughput in MBps (e.g. "250"). Auto-sets storageType to gp3 if not specified.
+- "iops": io1 provisioned IOPS (e.g. "10000"). Auto-sets storageType to io1 if not specified.
+- "iops2": io2 provisioned IOPS (e.g. "20000"). Auto-sets storageType to io2 if not specified.
+- "storageAmountIo2": io2 storage amount, e.g. {"value": "100", "unit": "gb|NA"}
 Do NOT use get_service_fields for Amazon EC2 — these fields are handled by a custom transform.
 
 IMPORTANT: Before calling this tool, you MUST confirm the desired AWS region with the user if they haven't already specified one. Do NOT assume a default region. Always include "region" in each service config. Use "description" to label what each service entry represents. IMPORTANT: descriptions and group names must NOT contain <, >, or & characters (AWS rejects them).

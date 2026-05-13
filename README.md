@@ -160,6 +160,7 @@ All optional:
 
 - The CloudFront save/manifest APIs are undocumented and may change without notice.
 - Callers must use the correct AWS field IDs — discover them via `get_service_fields`.
+- While the tool discovers applicable selectorValues, it currently cannot resolve dependencies e.g. Instance Types <-> License 
 - Estimates live in memory and don't persist across restarts.
 - No local cost calculation — pricing is computed by AWS when viewing the shareable link -> Make sure to press `Update estimate` to reflect latest pricing.
 - Only https://calculator.aws/ supported for now
@@ -204,6 +205,21 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for information
 | **AWS Credentials** | Not required (uses public calculator API) | Required (reads your billing data) | Required (`pricing:*` permissions) |
 
 TL;DR: Use the Pricing Calculator MCP to build estimates for proposals, the Billing & Cost Management MCP to analyze/optimize what you're already spending, and the Pricing MCP for granular unit-price lookups and IaC cost analysis.
+
+## Changelog
+
+### [1.0.1] - 2026-05-13
+- Fixed Bug: Proper support for nested Structures e.g. Elasticache, RDS, Bedrock, ALB
+- Fixed Bug: EC2/EBS iops, throughput not recognized
+- Enriched field metadata with allowed values, also validates upon submission - yet dependencies are not resolved
+- Costs are now displayed on initial load - however pressing 'Update estimate' is recommending
+- Supports importing/reading estimates
+- Dependencies updated
+- Removed dead code
+- Version info added (get_server_info)
+
+### [1.0.0] - 2026-04-30
+- Initial Release
 
 ## License
 

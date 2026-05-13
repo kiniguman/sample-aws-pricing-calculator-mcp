@@ -29,7 +29,7 @@ describe('EC2 transformConfig', () => {
 
   it('includes storage when provided', () => {
     const result = transformConfig({ storageType: 'gp3', storageAmount: '100' });
-    assert.equal(result.storageType.value, 'gp3');
+    assert.equal(result.storageType.value, 'Storage General Purpose gp3 GB Mo');
     assert.deepEqual(result.storageAmount, { value: '100', unit: 'gb|NA' });
   });
 
