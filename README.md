@@ -2,6 +2,8 @@
 
 [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that programmatically creates, reads, updates [AWS Pricing Calculator](https://calculator.aws/#/estimate) estimates through natural language.
 
+[![Install in Kiro](https://img.shields.io/badge/Install-Kiro-9046FF?style=flat-square&logo=kiro)](https://kiro.dev/launch/mcp/add?name=aws-pricing-calculator-mcp-server&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22sample-aws-pricing-calculator-mcp%40latest%22%5D%7D) [![Install in Cursor](https://img.shields.io/badge/Install-Cursor-blue?style=flat-square&logo=cursor)](https://cursor.com/en/install-mcp?name=aws-pricing-calculator-mcp-server&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInNhbXBsZS1hd3MtcHJpY2luZy1jYWxjdWxhdG9yLW1jcEBsYXRlc3QiXX0%3D) [![Install in VS Code](https://img.shields.io/badge/Install-VS_Code-FF9900?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=aws-pricing-calculator-mcp-server&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22sample-aws-pricing-calculator-mcp%40latest%22%5D%7D)
+
 ## Key Features
 
 - **Creating Estimates**: Supports all AWS services via live service definitions from the AWS Calculator CDN
@@ -34,15 +36,20 @@ The server communicates over stdio using the MCP protocol — it's designed to b
 
 Add to your MCP client config (e.g. `~/.kiro/settings/mcp.json`):
 
+Using npm/npx (Also always fetches latest version)
 ```json
-{
-  "mcpServers": {
+    "aws-pricing-calculator-mcp-server" : {
+      "command" : "npx",
+      "args" : [ "-y", "sample-aws-pricing-calculator-mcp@latest" ]
+    }
+```
+
+From local source (after build)
+```json
     "aws-pricing-calculator-mcp-server": {
       "command": "node",
       "args": ["/path/to/sample-aws-pricing-calculator-mcp/dist/mcp-server.js"]
     }
-  }
-}
 ```
 
 ## MCP Tools
@@ -209,11 +216,15 @@ TL;DR: Use the Pricing Calculator MCP to build estimates for proposals, the Bill
 
 ## Changelog
 
+### [1.0.2] - 2026-05-13
+- Added to npm https://www.npmjs.com/package/sample-aws-pricing-calculator-mcp
+- Added quick install button (Kiro, Cursor, VS Code)
+
 ### [1.0.1] - 2026-05-13
 - Fixed Bug: Proper support for nested Structures e.g. Elasticache, RDS, Bedrock, ALB
 - Fixed Bug: EC2/EBS iops, throughput not recognized
 - Enriched field metadata with allowed values, also validates upon submission - yet dependencies are not resolved
-- Costs are now displayed on initial load - however pressing 'Update estimate' is recommending
+- Costs are now displayed on initial load - however pressing 'Update estimate' is recommended
 - Supports importing/reading estimates
 - Dependencies updated
 - Removed dead code
