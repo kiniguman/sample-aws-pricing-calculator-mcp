@@ -1,0 +1,1 @@
+Broker type (Single-instance Broker), Number of Brokers running (1), Amazon RabbitMQ Broker Instance (mq.m5.large), Storage per Broker (200 GB)

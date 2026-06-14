@@ -1,5 +1,12 @@
-const { describe, it } = require('node:test');
+const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
+
+// Tracing is off by default; tests in this file assert save.* event
+// emission, which only happens with TRACE=on. Off-state behavior is
+// covered in test/trace-flag.test.js.
+process.env.TRACE = 'on';
+
+const { runWithSession } = require('../lib/request-context');
 
 function mockManifest() {
   return new Map([
@@ -145,6 +152,30 @@ describe('extractInputFields', () => {
     assert.equal(fields[0].defaultUnit, 'gb|NA');
   });
 
+  it('surfaces PCT defaultValue when present', () => {
+    const def = { templates: [{ id: 'tpl', groups: [{ items: [
+      { id: 'numberOfWriteTrails', type: 'numericInput', label: 'Trails', defaultValue: 1 },
+      { id: 'noDefault', type: 'numericInput', label: 'No default' },
+    ]}]}]};
+    const fields = extractInputFields(def);
+    const trails = fields.find(f => f.id === 'numberOfWriteTrails');
+    const noDefault = fields.find(f => f.id === 'noDefault');
+    assert.equal(trails.defaultValue, 1);
+    assert.equal(noDefault.defaultValue, undefined);
+  });
+
+  it('surfaces meaningful placeholder text but skips generic ones', () => {
+    const def = { templates: [{ id: 'tpl', groups: [{ items: [
+      { id: 'specific', type: 'numericInput', label: 'X', placeholder: 'Enter number of S3 operations in units selected' },
+      { id: 'generic1', type: 'numericInput', label: 'Y', placeholder: 'Enter the amount' },
+      { id: 'generic2', type: 'numericInput', label: 'Z', placeholder: 'Enter amount' },
+    ]}]}]};
+    const fields = extractInputFields(def);
+    assert.equal(fields.find(f => f.id === 'specific').placeholder, 'Enter number of S3 operations in units selected');
+    assert.equal(fields.find(f => f.id === 'generic1').placeholder, undefined);
+    assert.equal(fields.find(f => f.id === 'generic2').placeholder, undefined);
+  });
+
   it('skips decorative types like bodyText and headerText', () => {
     const def = { templates: [{ id: 'tpl', groups: [{ items: [
       { id: 'header1', type: 'input', subType: 'headerText' },
@@ -155,5 +186,128 @@ describe('extractInputFields', () => {
     const fields = extractInputFields(def);
     assert.equal(fields.length, 1);
     assert.equal(fields[0].id, 'actual');
+  });
+});
+
+describe('saveEstimate trace events', () => {
+  let originalFetch;
+  let writes;
+  let originalWrite;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    originalWrite = process.stderr.write.bind(process.stderr);
+    writes = [];
+    process.stderr.write = (s) => { writes.push(s); return true; };
+  });
+  afterEach(() => {
+    global.fetch = originalFetch;
+    process.stderr.write = originalWrite;
+  });
+
+  it('emits save.send and save.ok for a successful save, stamped with session id', async () => {
+    // The AWS save endpoint returns a Lambda proxy-shaped response:
+    // outer JSON has statusCode + body, body is a JSON string. See
+    // parseDoubleEncodedResponse in lib/aws-client.js and its existing
+    // test on line 62-70 of test/aws-client.test.js for the exact shape.
+    global.fetch = async () => ({
+      ok: true, status: 200,
+      text: async () => JSON.stringify({
+        statusCode: 200,
+        body: JSON.stringify({ savedKey: 'abc123' }),
+      }),
+    });
+    const { saveEstimate } = require('../lib/aws-client');
+    await runWithSession('sid-42', () =>
+      saveEstimate({ services: { s1: {} }, groups: {} }),
+    );
+    const events = writes
+      .map(s => { try { return JSON.parse(s); } catch { return null; } })
+      .filter(Boolean);
+    const send = events.find(e => e.event === 'save.send');
+    const ok = events.find(e => e.event === 'save.ok');
+    assert.ok(send, 'expected save.send event');
+    assert.ok(ok, 'expected save.ok event');
+    assert.equal(send.serviceCount, 1);
+    assert.equal(send.groupCount, 0);
+    assert.equal(send.mcpSessionId, 'sid-42');
+    assert.equal(ok.savedKey, 'abc123');
+    assert.equal(ok.mcpSessionId, 'sid-42');
+  });
+
+  it('emits save.fail on non-200 with the response status and a body excerpt', async () => {
+    // The save.fail path triggers when res.ok is false. Response text
+    // is treated as opaque (no double-decode), so a plain string is the
+    // right shape here.
+    global.fetch = async () => ({
+      ok: false, status: 400,
+      text: async () => 'bad request: too many tokens',
+    });
+    const { saveEstimate } = require('../lib/aws-client');
+    await assert.rejects(() =>
+      runWithSession('sid-43', () => saveEstimate({ services: {}, groups: {} })),
+    );
+    const events = writes
+      .map(s => { try { return JSON.parse(s); } catch { return null; } })
+      .filter(Boolean);
+    const fail = events.find(e => e.event === 'save.fail');
+    assert.ok(fail);
+    assert.equal(fail.status, 400);
+    assert.match(fail.body, /bad request/);
+    assert.equal(fail.mcpSessionId, 'sid-43');
+  });
+
+  it('passes estimateId through to save.send / save.ok / save.fail when supplied', async () => {
+    global.fetch = async () => ({
+      ok: true, status: 200,
+      text: async () => JSON.stringify({
+        statusCode: 200,
+        body: JSON.stringify({ savedKey: 'abc123' }),
+      }),
+    });
+    const { saveEstimate } = require('../lib/aws-client');
+    await runWithSession('sid-50', () =>
+      saveEstimate({ services: { s1: {} }, groups: {} }, { estimateId: 'local-est-id-99' }),
+    );
+    const events = writes
+      .map(s => { try { return JSON.parse(s); } catch { return null; } })
+      .filter(Boolean);
+    const send = events.find(e => e.event === 'save.send');
+    const ok = events.find(e => e.event === 'save.ok');
+    assert.equal(send.estimateId, 'local-est-id-99');
+    assert.equal(ok.estimateId, 'local-est-id-99');
+  });
+
+  it('omits estimateId when not supplied (back-compat)', async () => {
+    global.fetch = async () => ({
+      ok: true, status: 200,
+      text: async () => JSON.stringify({
+        statusCode: 200,
+        body: JSON.stringify({ savedKey: 'abc124' }),
+      }),
+    });
+    const { saveEstimate } = require('../lib/aws-client');
+    await saveEstimate({ services: {}, groups: {} });  // no second arg
+    const events = writes
+      .map(s => { try { return JSON.parse(s); } catch { return null; } })
+      .filter(Boolean);
+    const send = events.find(e => e.event === 'save.send');
+    assert.equal(send.estimateId, undefined);
+  });
+
+  it('stamps estimateId on save.fail too', async () => {
+    global.fetch = async () => ({
+      ok: false, status: 400,
+      text: async () => 'bad request',
+    });
+    const { saveEstimate } = require('../lib/aws-client');
+    await assert.rejects(() =>
+      runWithSession('sid-51', () => saveEstimate({ services: {}, groups: {} }, { estimateId: 'local-est-id-100' })),
+    );
+    const events = writes
+      .map(s => { try { return JSON.parse(s); } catch { return null; } })
+      .filter(Boolean);
+    const fail = events.find(e => e.event === 'save.fail');
+    assert.equal(fail.estimateId, 'local-est-id-100');
   });
 });

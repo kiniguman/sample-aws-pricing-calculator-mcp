@@ -56,6 +56,57 @@ describe('EstimateBuilder', () => {
     });
   });
 
+  describe('sanitize', () => {
+    const { sanitize } = require('../lib/estimate-builder');
+
+    it('passes plain ASCII through unchanged', () => {
+      assert.equal(sanitize('Plain description'), 'Plain description');
+    });
+
+    it('strips leading @=+- (CSV-injection guards)', () => {
+      assert.equal(sanitize('- bullet item'), 'bullet item');
+      assert.equal(sanitize('@everyone'), 'everyone');
+      assert.equal(sanitize('=cmd injection'), 'injection');
+      assert.equal(sanitize('+1 service'), '1 service');
+    });
+
+    it('keeps mid-string hyphens', () => {
+      assert.equal(sanitize('API - Lambda handler'), 'API - Lambda handler');
+    });
+
+    it('strips < and > anywhere', () => {
+      assert.equal(sanitize('use < this'), 'use  this');
+      assert.equal(sanitize('rate >100'), 'rate 100');
+    });
+
+    it('strips bare ampersand but keeps named HTML entities', () => {
+      assert.equal(sanitize('AI & ML'), 'AI  ML');
+      assert.equal(sanitize('AI &amp; ML'), 'AI &amp; ML');
+      assert.equal(sanitize('less &lt; 5'), 'less &lt; 5');
+      assert.equal(sanitize('quote &quot; here'), 'quote &quot; here');
+    });
+
+    it('strips =cmd anywhere (server silently strips it)', () => {
+      assert.equal(sanitize('echo =cmd test'), 'echo  test');
+      assert.equal(sanitize('echo =CMD test'), 'echo  test');
+    });
+
+    it('neutralizes numeric/hex HTML entities (server 400s on them)', () => {
+      // The save lambda runs sanitize-html on the JSON body; a decoded
+      // numeric entity (&#34; → ") shatters JSON structure and the API
+      // returns "Unexpected token q in JSON at position N". Probe shape
+      // 2026-05-15 confirmed this. Sanitize must strip the leading `&`
+      // so the entity can never decode server-side.
+      assert.equal(sanitize('has &#34; numeric entity').includes('&#'), false);
+      assert.equal(sanitize('has &#x22; hex entity').includes('&#'), false);
+    });
+
+    it('handles null and undefined', () => {
+      assert.equal(sanitize(null), '');
+      assert.equal(sanitize(undefined), '');
+    });
+  });
+
   describe('addService deduplication', () => {
     it('deduplicates same service key using description', () => {
       const eb = new EstimateBuilder('test');
@@ -67,13 +118,11 @@ describe('EstimateBuilder', () => {
       assert.ok(keys.some(k => k.includes('Cronjobs')), 'second entry has description suffix');
     });
 
-    it('recognizes ec2Enhancement as EC2 service', () => {
+    it('recognizes ec2Enhancement as a service with a custom transform', () => {
       const eb = new EstimateBuilder('test');
-      // Agents use ec2Enhancement (from search) not eC2Next (inactive)
-      // _isEC2 must recognize both keys so the EC2 transform is applied
-      assert.ok(eb._isEC2({ key: 'ec2Enhancement' }), 'should recognize ec2Enhancement');
-      assert.ok(!eb._isEC2({ key: 'eC2Next' }), 'eC2Next is inactive, not supported');
-      assert.ok(!eb._isEC2({ key: 'aWSLambda' }), 'should not match other services');
+      assert.ok(eb._hasTransform({ key: 'ec2Enhancement' }), 'should recognize ec2Enhancement');
+      assert.ok(!eb._hasTransform({ key: 'eC2Next' }), 'eC2Next is inactive, not supported');
+      assert.ok(!eb._hasTransform({ key: 'aWSLambda' }), 'should not match other services');
     });
 
     it('places services in groups when specified', () => {
@@ -159,6 +208,90 @@ describe('toAWSPayload', () => {
     assert.equal(groupServices.length, 2);
     const codes = groupServices.map(s => s.serviceCode).sort();
     assert.deepEqual(codes, ['aWSLambda', 'amazonS3Standard']);
+  });
+
+  it('merges multiple subservice children under a single parent envelope', async () => {
+    const APPSYNC_MANIFEST = {
+      awsServices: [
+        { key: 'awsAppSync', name: 'AWS AppSync', serviceCode: 'awsAppSync',
+          subType: 'subServiceSelector',
+          templates: ['appSyncApiCall', 'appSyncCaching', 'appSyncRealTime'] },
+        { key: 'appSyncApiCall', name: 'AppSync API Calls', serviceCode: 'appSyncApiCall',
+          subType: 'subService' },
+        { key: 'appSyncCaching', name: 'AppSync Caching', serviceCode: 'appSyncCaching',
+          subType: 'subService' },
+        { key: 'appSyncRealTime', name: 'AppSync RealTime', serviceCode: 'appSyncRealTime',
+          subType: 'subService' },
+      ],
+    };
+    mockFetch([
+      ['manifest/en_US.json', APPSYNC_MANIFEST],
+      ['data/awsAppSync', { version: '0.0.66', serviceCode: 'awsAppSync',
+        templateId: 'appSyncClassesGroup', templates: [{ id: 'appSyncClassesGroup' }] }],
+      ['data/appSyncApiCall', { version: '0.0.16', serviceCode: 'appSyncApiCall',
+        templates: [{ id: 'apiquerydatamodification' }] }],
+      ['data/appSyncCaching', { version: '0.0.15', serviceCode: 'appSyncCaching',
+        templates: [{ id: 'cacheSpeed' }] }],
+      ['data/appSyncRealTime', { version: '0.0.18', serviceCode: 'appSyncRealTime',
+        templates: [{ id: 'apiquerydatamodification' }] }],
+    ]);
+
+    const EB = require('../lib/estimate-builder');
+    const eb = new EB('AppSync multi-child');
+    eb.addService('appSyncApiCall',  { region: 'us-east-1', description: 'API queries' });
+    eb.addService('appSyncCaching',  { region: 'us-east-1', description: 'Cache' });
+    eb.addService('appSyncRealTime', { region: 'us-east-1', description: 'Subs' });
+
+    const payload = await eb.toAWSPayload();
+    const entries = Object.entries(payload.services);
+
+    assert.equal(entries.length, 1, 'all 3 children must collapse into ONE parent envelope');
+    const [key, parent] = entries[0];
+    assert.ok(key.startsWith('awsAppSync-'), `parent key should start with awsAppSync-, got ${key}`);
+    assert.equal(parent.serviceCode, 'awsAppSync');
+    assert.equal(parent.estimateFor, 'appSyncClassesGroup');
+    assert.ok(Array.isArray(parent.subServices));
+    assert.equal(parent.subServices.length, 3, 'parent should hold all 3 subservices');
+
+    const codes = parent.subServices.map(s => s.serviceCode).sort();
+    assert.deepEqual(codes, ['appSyncApiCall', 'appSyncCaching', 'appSyncRealTime']);
+
+    const apiCall = parent.subServices.find(s => s.serviceCode === 'appSyncApiCall');
+    assert.equal(apiCall.estimateFor, 'apiquerydatamodification');
+    assert.equal(apiCall.version, '0.0.16');
+    assert.equal(apiCall.description, 'API queries');
+  });
+
+  it('keeps single subservice case working (no regression)', async () => {
+    const SNS_MANIFEST = {
+      awsServices: [
+        { key: 'amazonSimpleNotificationService', name: 'Amazon SNS',
+          serviceCode: 'amazonSimpleNotificationService',
+          subType: 'subServiceSelector', templates: ['standardTopics'] },
+        { key: 'standardTopics', name: 'Standard Topics', serviceCode: 'standardTopics',
+          subType: 'subService' },
+      ],
+    };
+    mockFetch([
+      ['manifest/en_US.json', SNS_MANIFEST],
+      ['data/amazonSimpleNotificationService', { version: '0.0.59',
+        serviceCode: 'amazonSimpleNotificationService',
+        templates: [{ id: 'snsClassesGroup' }] }],
+      ['data/standardTopics', { version: '0.0.59', serviceCode: 'standardTopics',
+        templates: [{ id: 'sns_t1' }] }],
+    ]);
+
+    const EB = require('../lib/estimate-builder');
+    const eb = new EB('SNS single child');
+    eb.addService('standardTopics', { region: 'us-east-1', description: 'Notifications' });
+
+    const payload = await eb.toAWSPayload();
+    const entries = Object.entries(payload.services);
+    assert.equal(entries.length, 1);
+    const [key, parent] = entries[0];
+    assert.ok(key.startsWith('amazonSimpleNotificationService-'));
+    assert.equal(parent.subServices.length, 1);
+    assert.equal(parent.subServices[0].serviceCode, 'standardTopics');
   });
 
   it('falls back gracefully when definition fetch fails', async () => {
@@ -267,5 +400,50 @@ describe('partition support', () => {
   it('loadManifest rejects unknown partition', async () => {
     const { loadManifest } = require('../lib/aws-client');
     await assert.rejects(() => loadManifest('aws-govcloud'), /Unknown partition/);
+  });
+});
+
+describe('EstimateBuilder serialization', () => {
+  it('round-trips through toJSON / fromJSON preserving all state', () => {
+    const original = new EstimateBuilder('My Test', 'aws');
+    original.addService('aWSLambda', {
+      region: 'us-east-1',
+      description: 'compute',
+      numberOfRequests: { value: '10', unit: 'millionPerMonth' },
+    });
+    original.addService('amazonS3Standard', {
+      region: 'us-east-1',
+      description: 'storage',
+    }, { group: 'Prod' });
+    original.addService('aWSLambda', {
+      region: 'us-east-1',
+      description: 'second lambda',
+    });
+
+    const snapshot = original.toJSON();
+    const hydrated = EstimateBuilder.fromJSON(snapshot);
+
+    assert.equal(hydrated.id, original.id);
+    assert.equal(hydrated.name, original.name);
+    assert.equal(hydrated.partition, original.partition);
+    assert.deepEqual(hydrated.services, original.services);
+    assert.deepEqual(hydrated.groups, original.groups);
+    assert.ok(hydrated.usedKeys instanceof Set);
+    assert.deepEqual([...hydrated.usedKeys].sort(), [...original.usedKeys].sort());
+
+    hydrated.addService('aWSLambda', {
+      region: 'us-east-1',
+      description: 'third lambda',
+    });
+    const lambdaKeys = Object.keys(hydrated.services).filter(k => k.startsWith('aWSLambda'));
+    assert.equal(lambdaKeys.length, 3, 'dedup logic must survive hydration');
+  });
+
+  it('toJSON returns a plain object with no class instances', () => {
+    const e = new EstimateBuilder('plain', 'aws');
+    e.addService('aWSLambda', { region: 'us-east-1' });
+    const snapshot = e.toJSON();
+    const round = JSON.parse(JSON.stringify(snapshot));
+    assert.deepEqual(round, snapshot);
   });
 });

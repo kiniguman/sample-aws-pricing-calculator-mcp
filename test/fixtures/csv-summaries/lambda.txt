@@ -1,0 +1,1 @@
+Number of requests (5 million per month), Invoke Mode (Buffered)

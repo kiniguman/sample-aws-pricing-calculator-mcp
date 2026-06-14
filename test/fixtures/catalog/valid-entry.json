@@ -1,0 +1,6 @@
+{
+  "serviceCode": "aWSLambda",
+  "displayName": "AWS Lambda",
+  "status": "unverified",
+  "minimalConfig": { "region": "us-east-1" }
+}

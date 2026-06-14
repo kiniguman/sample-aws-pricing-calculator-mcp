@@ -1,0 +1,6 @@
+{
+  "serviceCode": "badEntry",
+  "displayName": "Bad Entry",
+  "status": "verified",
+  "minimalConfig": { "region": "us-east-1" }
+}

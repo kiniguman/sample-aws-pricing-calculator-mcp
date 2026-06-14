@@ -1,0 +1,1 @@
+Nodes (1), Instance Type (db.r6g.4xlarge), Utilization (On-Demand only) (100 %Utilized/Month), Deployment Option (Single-AZ), Pricing Model (OnDemand), Storage volume (General Purpose SSD (gp3)), Storage amount (100 GB)
