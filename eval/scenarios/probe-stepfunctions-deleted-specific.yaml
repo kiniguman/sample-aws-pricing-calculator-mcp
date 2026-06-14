@@ -7,11 +7,11 @@ description: |
   FALSIFIER — tests H1 ("specific prompts → catalog adds little")
   against the unit-choice bug class.
 
-  Step Functions has the millionPerMonth-vs-perMonth trap
-  (commit 745923c). Without the catalog, the agent has only the
-  manifest's options[] for the `numberOfExecutions` frequency
-  field — which lists perHour/perDay/perMonth (and NOT
-  millionPerMonth — that's a Lambda-side unit).
+  Step Functions has the millionPerMonth-vs-perMonth trap.
+  Without the catalog, the agent has only the manifest's options[]
+  for the `numberOfExecutions` frequency field — which lists
+  perHour/perDay/perMonth (and NOT millionPerMonth — that's a
+  Lambda-side unit).
 
   Specific prompt with full magnitudes. If H1 holds, the agent
   reads manifest options[], sees only perHour/perDay/perMonth,

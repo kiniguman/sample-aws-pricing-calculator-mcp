@@ -42,8 +42,7 @@
     "columnFormIPM uses NAMESPACED selector keys (port:Direct Connect Location, port:Connection Type, port:Capacity) — the 'port:' prefix is part of the key, not a separator. Sending without the prefix silently lands in the saved blob but the pricing engine looks up rates by namespaced key and falls back to defaults.",
     "Unlike RDS, Direct Connect's columnFormIPM has NO 'undefined' utilization slot. Utilization (port hours/mo) is a separate top-level field that pairs with the matrix. The UI splits 'how many ports + where + how fast' (matrix) from 'how many hours per month' (top-level) — keep them separate in the catalog config too.",
     "Capacity options are the dropdown-id-as-data pattern: '1G', '10G', '100G' for Dedicated; '50M', '100M', '200M', '300M', '400M', '500M', '1G', '2G', '5G', '10G' for Hosted. The number after the digit is literal (G = Gbps, M = Mbps).",
-    "Direct Connect Location is the long-form address string ('165 Halsey Street, Newark, NJ'), not an airport-code shorthand. The location list is large; agents should call get_service_fields if they need to enumerate them.",
-    "Data transfer out tiers by destination: same-region is cheapest, inter-region (e.g. us-east-1 → us-west-2 via DC) is more. The dataTransferOut field doesn't carry destination — pricing engine assumes the most-common-tier."
+    "Direct Connect Location is the long-form address string ('165 Halsey Street, Newark, NJ'), not an airport-code shorthand. The location list is large; agents should call get_service_fields if they need to enumerate them."
   ],
   "minimalConfig": {
     "region": "us-east-1",

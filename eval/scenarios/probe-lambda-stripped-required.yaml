@@ -12,10 +12,9 @@ description: |
   toggles, invoke-mode). Also strips minimalConfig and traps so the
   agent gets the "minimal-information" version of the catalog block.
 
-  Pre-fix shape mirrored: ~2026-05-15 catalog state where Lambda was
-  marked verified but missing the empirical required-set. Production
-  observed silent-$0 saves until the 4146e2e fix added the missing
-  fields back.
+  Pre-fix shape mirrored: an earlier catalog state where Lambda was
+  marked verified but missing the empirical required-set, leading to
+  silent-$0 saves until the missing fields were added back.
 
   Goal: observe the agent's behavior with a misleading-but-not-empty
   catalog. Three plausible outcomes:

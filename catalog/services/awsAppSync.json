@@ -8,8 +8,7 @@
   "verifiedEstimateId": "0260e936d61d8b7e64366d6df2395b1abeb15446",
   "required": [],
   "traps": [
-    "awsAppSync is a subServiceSelector parent — call addService(<childCode>, ...) for each aspect (appSyncApiCall, appSyncCaching, appSyncRealTime, appsyncDataTransfer, appSyncEventApi). EstimateBuilder merges all children into a single parent envelope; do not call addService('awsAppSync', ...) directly.",
-    "Each child has its own estimateFor; the parent envelope's estimateFor is 'appSyncClassesGroup' (set by the API, not the manifest templateId)."
+    "awsAppSync is a subServiceSelector parent — call addService(<childCode>, ...) for each aspect (appSyncApiCall, appSyncCaching, appSyncRealTime, appsyncDataTransfer, appSyncEventApi). EstimateBuilder merges all children into a single parent envelope; do not call addService('awsAppSync', ...) directly."
   ],
   "subServices": [
     {

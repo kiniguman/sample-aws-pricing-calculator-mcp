@@ -1,12 +1,17 @@
-# Eval — agent-behavior assertions for `local_calculator`
+# Eval — agent-behavior assertions
 
 Reusable predicate library + stdio-MCP driver + LLM driver +
 scenario runner. Two scenario styles: **scripted** (hardcoded MCP
 calls, fast, no AWS deps) and **LLM-driven** (Bedrock Haiku gets the
 tools and a natural-language prompt, captured trajectory is scored
-the same way). Predicate library is shared; the deployment-side eval
-in `quick-pricing-calculator/scripts/eval/` will eventually import
-from here.
+the same way). Predicate library is shared; downstream consumers can
+import it for their own deployment-side eval.
+
+Hand-rolled — no external eval framework. Dependencies are
+`pyyaml` (scenario parsing) and `boto3` (Bedrock for LLM scenarios),
+plus the bundle's existing Playwright + Node MCP SDK. Scenarios are
+plain YAML; predicates are plain Python functions discovered via
+`getattr` from `predicates.py`.
 
 ## What this is
 
@@ -19,12 +24,14 @@ A scenario in `eval/scenarios/*.yaml` is either:
   `expectations:`. The runner spawns `mcp-server.js`, gives Haiku
   4.5 the MCP tools as Bedrock tool definitions, sends the prompt,
   captures every tool call the agent makes. Same `TraceResult`
-  shape; same predicates score it. Costs ~$0.001 per scenario.
+  shape; same predicates score it.
 
 LLM-driven scenarios test what production logs cannot:
 - Did the agent call `get_service_fields` before committing to a save?
 - Did the agent's config use catalog `minimalConfig` keys?
-- Did the agent recover from a `needs_grounding` redirect?
+- Did the agent recover from a `needs_field_grounding` redirect?
+
+As of this release: **87 scenarios** — 22 scripted + 65 LLM-driven.
 
 ## Running
 
@@ -38,7 +45,8 @@ python eval/run.py -v          # verbose, per-call
 ```
 
 Scripted scenarios need no AWS credentials. LLM scenarios need
-Bedrock access in `us-east-1` (uses `us.anthropic.claude-haiku-4-5-20251001-v1:0`).
+Bedrock access in `us-east-1` (uses the cross-region inference
+profile `us.anthropic.claude-haiku-4-5-20251001-v1:0`).
 The MCP server's outbound calls go to public CloudFront endpoints,
 not your AWS account.
 
@@ -46,11 +54,11 @@ Exit code 0 if all pass, 1 if any predicate fails, 2 on usage error.
 
 ## Speed knobs
 
-The full suite is ~10 minutes (LLM Bedrock calls + Playwright
-launches). Three flags shrink the loop:
+The full suite takes several minutes (LLM Bedrock calls + Playwright
+launches dominate). Three flags shrink the loop:
 
 ```bash
-python eval/run.py --scripted-only       # skip the 11 LLM scenarios (~30s for the 17 scripted)
+python eval/run.py --scripted-only       # skip the 65 LLM scenarios (~30s for the 22 scripted)
 python eval/run.py --skip-dom-oracle     # skip estimate_renders_cost predicates (no Playwright)
 python eval/run.py --rerun-failed        # only the previous full run's failures
 ```
@@ -96,21 +104,32 @@ predicates.assert_lint_verdict(trace, expected='editable')
 ```
 
 Today's predicates:
+
 - `save_succeeded` — some path produced a calculator URL.
+- `export_refused` — `export_estimate` was refused by the linter
+  with the expected verdict. Use to assert the lint-refusal path
+  fired correctly.
 - `no_tool_errors` — every call returned `isError:false`.
-- `lint_verdict` — last `validate_estimate` returned the expected verdict.
+- `lint_verdict` — last `validate_estimate` returned the expected
+  verdict.
 - `trajectory_includes` — given tool sequence appears (loose / strict).
-- `response_field_present` — last call to a tool returned a JSON body
-  with the given dotted-path field.
+- `response_field_present` — last call to a tool returned a JSON
+  body with the given dotted-path field.
 - `max_tool_calls` — trace has at most N calls (cost guardrail).
-- `estimate_renders_cost` — the saved URL renders ≥ `min_monthly_usd`
-  (default 1¢) when scraped from the calculator's rendered DOM.
-  Catches the silent-zero-cost bug class (4146e2e) that lint+roundtrip
-  miss. Requires Playwright headless Chromium; ~5s per scenario
-  (uses lib/dom-cost.js).
+- `estimate_renders_cost` — the saved URL renders ≥
+  `min_monthly_usd` (default 1¢) when scraped from the calculator's
+  rendered DOM via `lib/dom-cost.js`. Catches the silent-$0 bug
+  class that the static linter cannot evaluate. Requires Playwright
+  + headless Chromium; ~5s per scenario.
+- `saved_blob_field_equals` — fetches the saved estimate by ID and
+  asserts a specific field's value matches the expected value.
+  Catches "agent narrated X but actually saved Y" failures.
+- `saved_blob_field_count` — fetches the saved estimate and asserts
+  the number of services / groups / matching fields. Useful for
+  multi-service prompts.
 
 Add new predicates by writing `assert_<name>(trace, ...)` in
-`predicates.py`. The runner will discover them via `getattr`.
+`predicates.py`. The runner discovers them via `getattr`.
 
 ## Scenario format
 

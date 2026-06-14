@@ -8,8 +8,8 @@ description: |
   against the columnFormIPM shape bug class.
 
   RDS PG's catalog has a columnFormIPM trap warning about wrapped
-  shape vs dotted-path keys. The dotted-path version saved cleanly
-  for ~2 weeks (commit 9f2e63f) before someone noticed silent-\$0.
+  shape vs dotted-path keys. The dotted-path version saves cleanly
+  but renders silent-$0 — invisible without the cost-oracle check.
   This probe asks: with NO catalog, can the agent construct
   columnFormIPM in the right wrapped shape from manifest data
   alone?

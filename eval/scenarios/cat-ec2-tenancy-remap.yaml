@@ -1,7 +1,6 @@
 id: cat-ec2-tenancy-remap
 description: |
-  Sub-task C 2026-06-04 (#126/#133, memory: project_calculator_defaults_missing_required
-  tenancy hazard).
+  Sub-task C 2026-06-04 — covers the EC2 tenancy/RI remap hazard.
 
   EC2's transformConfig silently remaps reserved/convertible →
   instance-savings/compute-savings under shared tenancy because the

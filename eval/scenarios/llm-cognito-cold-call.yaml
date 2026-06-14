@@ -4,14 +4,14 @@ prompt: |
   50,000 monthly active users for an authentication-heavy mobile app.
   Use us-east-1. Return the shareable URL.
 description: |
-  The canonical agent-behavior test. Cognito is a multi-tier service
-  (Lite, Essentials, Plus) with a curated catalog entry as of
-  0405d8a. The catalog block in get_service_fields tells the agent
-  which tier to use and which fields are required. Production data
-  showed 0/43 NAT-gateway failures had a prior get_service_fields
-  call — agents skip discovery and guess. This scenario tests
-  whether Haiku, given a clean prompt, calls get_service_fields
-  before add_service for an unknown service.
+  The canonical agent-behavior test. Cognito is a multi-tier
+  service (Lite, Essentials, Plus) with a curated catalog entry.
+  The catalog block in get_service_fields tells the agent which
+  tier to use and which fields are required. Production
+  observations show that agents often skip discovery and guess for
+  unfamiliar services. This scenario tests whether Haiku, given a
+  clean prompt, calls get_service_fields before add_service for an
+  unknown service.
 expectations:
   - predicate: save_succeeded
   - predicate: no_tool_errors

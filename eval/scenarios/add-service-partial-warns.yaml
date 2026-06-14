@@ -1,8 +1,8 @@
 id: add-service-partial-warns
 description: |
-  Pinned to Test 5 of the post-deploy validation 2026-06-03 (#125,
-  memory: validate-config-keys-vs-lint-gap). Pre-fix shape: agent
-  calls add_service with empty NAT config (just region/description),
+  Pinned to Test 5 of the post-deploy validation 2026-06-03. Pre-fix
+  shape: agent calls add_service with empty NAT config (just
+  region/description),
   receives success: true with no signal that anything's wrong, then
   validate_estimate refuses on missing required fields and the
   retry-then-pollute-the-store loop begins.

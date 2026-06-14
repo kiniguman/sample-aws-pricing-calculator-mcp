@@ -11,15 +11,11 @@ scripted MCP-call sequences into a behavior eval. It answers
 questions production traces cannot:
   - Did the agent call get_service_fields before add_service?
   - Did the agent's add_service config use catalog minimalConfig keys?
-  - Did the agent recover from a needs_grounding redirect?
+  - Did the agent recover from a needs_field_grounding redirect?
 
-Stays within local_calculator: drives the local mcp-server.js over
-stdio, talks to Bedrock for the LLM. No Cognito/Gateway dance, no
-production credentials needed beyond what AWS profiles already grant.
-
-Cost estimate: each scenario ≈ 5-15 tool calls × 2K tokens each ≈
-$0.001 per scenario at Haiku 4.5 prices. Full eval suite (5
-scenarios) is < 1 cent per run.
+Drives the local mcp-server.js over stdio and talks to Bedrock for
+the LLM — no production credentials needed beyond what an AWS
+profile with Bedrock access in us-east-1 already grants.
 """
 
 from __future__ import annotations
@@ -141,9 +137,9 @@ def run_llm_scenario(
         max_turns: <optional override>
 
     Model selection precedence: explicit model_id arg > scenario['model']
-    > DEFAULT_MODEL_ID. Lets the runner ask "does Sonnet 4.5 (production)
-    behave the same as Haiku 4.5 (cheap eval default) on this prompt?"
-    without rewriting every scenario.
+    > DEFAULT_MODEL_ID. Lets the runner compare a higher-tier model
+    against the cheap eval default on the same prompt without
+    rewriting every scenario.
 
     Returns a TraceResult identical in shape to scripted scenarios,
     so predicates.py works unchanged.

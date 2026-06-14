@@ -3,15 +3,13 @@
 // SPDX-License-Identifier: MIT-0
 
 /**
- * Author-catalog driver — the deterministic spine of the
- * author-catalog-entry skill (skills/author-catalog-entry/SKILL.md).
+ * Author-catalog driver — deterministic CLI for catalog authoring.
  *
- * Each subcommand maps to one numbered step in SKILL.md and emits
- * structured JSON to stdout. The skill (the orchestrator) calls these
- * subcommands in sequence, parses the JSON, presents diffs to the user,
- * and authors trap text. The script does NOT make subjective decisions:
- * trap prose, the verified-status bump, and "is this good enough?" all
- * stay with the human in the loop.
+ * Each subcommand maps to one numbered step in `catalog/README.md`'s
+ * "Adding a new service" workflow and emits structured JSON to stdout.
+ * The script does NOT make subjective decisions: trap prose, the
+ * verified-status bump, and "is this good enough?" all stay with the
+ * human in the loop.
  *
  * Usage:
  *   node scripts/author-catalog.js <subcommand> <serviceCode> [options]
@@ -90,6 +88,10 @@ function writeCatalog(serviceCode, entry) {
 // ---------- subcommand: resolve ----------
 
 async function cmdResolve(serviceCode) {
+  // Lazy-loads throughout this file are intentional and standard for CLI
+  // scripts: each subcommand pays only for what it needs. The scanner's
+  // "block other requests" warning doesn't apply — this is a one-shot CLI,
+  // not a request handler. nosemgrep: lazy-load-module
   const { loadManifest } = require('../lib/aws-client');
 
   const manifest = await loadManifest('aws');
@@ -205,8 +207,11 @@ async function cmdPad(serviceCode, flags) {
   const entry = readCatalog(serviceCode);
   if (!entry) return fail(`No catalog entry for '${serviceCode}'. Run \`generate\` first.`);
 
+  // nosemgrep: lazy-load-module
   const { loadManifest, fetchServiceDefinition } = require('../lib/aws-client');
+  // nosemgrep: lazy-load-module
   const { buildSurfaceabilityIndex } = require('../lib/surfaceability');
+  // nosemgrep: lazy-load-module
   const { suggestValue } = require('../lib/pct-config');
 
   const manifest = await loadManifest('aws');
@@ -284,6 +289,7 @@ async function cmdPreflight(serviceCode) {
   if (!entry) return fail(`No catalog entry for '${serviceCode}'. Run \`generate\` first.`);
 
   // Schema validation first — no network needed.
+  // nosemgrep: lazy-load-module
   const { validateAgainstSchema } = require('../lib/catalog');
   const schemaErrors = validateAgainstSchema(entry);
   if (schemaErrors) {
@@ -300,7 +306,9 @@ async function cmdPreflight(serviceCode) {
   // run the static rehydration linter against it. Mirrors what the
   // calculator MCP server's validate_estimate tool does, but here we
   // drive it directly from the catalog entry.
+  // nosemgrep: lazy-load-module
   const EstimateBuilder = require('../lib/estimate-builder');
+  // nosemgrep: lazy-load-module
   const { canRehydrateFetch } = require('../lib/can-rehydrate-fetch');
 
   const eb = new EstimateBuilder(`Preflight: ${serviceCode}`);
@@ -352,7 +360,9 @@ async function cmdSave(serviceCode) {
   const entry = readCatalog(serviceCode);
   if (!entry) return fail(`No catalog entry for '${serviceCode}'. Run \`generate\` first.`);
 
+  // nosemgrep: lazy-load-module
   const EstimateBuilder = require('../lib/estimate-builder');
+  // nosemgrep: lazy-load-module
   const { fetchEstimate } = require('../lib/aws-client');
 
   const eb = new EstimateBuilder(`Catalog save: ${serviceCode}`);
@@ -476,6 +486,7 @@ async function cmdVerify(serviceCode, flags) {
     verifiedEstimateId: estimateId,
   };
 
+  // nosemgrep: lazy-load-module
   const { validateAgainstSchema } = require('../lib/catalog');
   const errors = validateAgainstSchema(updated);
   if (errors) {

@@ -15,7 +15,7 @@ description: |
 
   Critically also drops the trap text that warns about this. A real
   agent reading the broken catalog has no in-band way to know the
-  unit is wrong. The 745923c fix added BOTH the corrected unit AND
+  unit is wrong. The verified entry has BOTH the corrected unit AND
   the trap text — this probe tests what a model does without the
   warning.
 

@@ -152,6 +152,10 @@ def run_eval(scenario_ids: list[str], keep_mutated: bool) -> list[dict]:
     if keep_mutated:
         cmd.append('--keep-mutated-catalog')
     print(f'Running {len(scenario_ids)} scenarios...', file=sys.stderr)
+    # nosemgrep: dangerous-subprocess-use-audit
+    # cmd is a fixed list (python3, eval/run.py path, scenario IDs). No shell
+    # invocation, no string interpolation. scenario_ids come from sys.argv at
+    # the operator's discretion in this maintainer-only script.
     proc = subprocess.run(cmd, capture_output=True, text=True,
                           cwd=REPO_ROOT)
     if proc.returncode != 0 and not proc.stdout:

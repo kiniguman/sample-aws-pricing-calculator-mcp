@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: MIT-0
 
 /**
- * Tests for scripts/author-catalog.js — the deterministic spine of the
- * author-catalog-entry skill.
+ * Tests for scripts/author-catalog.js — the deterministic CLI for
+ * catalog authoring.
  *
  * Strategy: spawn the script as a child process and parse its stdout
- * JSON. This mirrors how the skill calls it (via Bash) and avoids
- * coupling the tests to internal helpers that may move.
+ * JSON. This mirrors how callers run it (via Bash) and avoids coupling
+ * the tests to internal helpers that may move.
  *
  * SKIP_NETWORK gate: subcommands that touch the manifest/PCT (resolve,
  * generate, pad) need a network. The status subcommand is filesystem-

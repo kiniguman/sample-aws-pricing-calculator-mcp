@@ -248,14 +248,18 @@ describe('validateConfigKeys', () => {
     assert.equal(result.error, null, 'should not block on fetch failure');
   });
 
-  it('returns null when service is not found in manifest', async () => {
+  it('returns a structured error when service is not found in manifest', async () => {
     mockFetch([['manifest/en_US.json', FAKE_MANIFEST]]);
     const { validateConfigKeys } = require('../lib/validation');
     const result = await validateConfigKeys('nonexistentService', {
       region: 'us-east-1',
       someField: '100',
     });
-    assert.equal(result.error, null);
+    // Service didn't resolve — surface to agent immediately rather than
+    // letting the entry through and failing later at lint with a vague
+    // template-existence error.
+    assert.ok(result.error, 'should surface an error');
+    assert.match(result.error, /not found in manifest|did not resolve/);
   });
 
   it('reports multiple invalid keys at once', async () => {

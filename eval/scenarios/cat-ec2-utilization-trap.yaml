@@ -6,7 +6,7 @@ description: |
   the EC2 fields, found no `utilization` field in get_service_fields,
   saved with `pricingStrategy: 'ondemand'` (string shorthand) and
   `workload: 1` — never reaching the `pricingStrategy.value.utilizationValue`
-  envelope shape that #123 fixes.
+  envelope shape that the EC2 utilization fix addresses.
 
   The saved blob shows `utilizationValue: "100"`, not "80". The agent's
   closing message told the user to "manually adjust the calculator

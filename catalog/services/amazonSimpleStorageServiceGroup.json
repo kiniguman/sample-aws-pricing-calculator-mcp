@@ -9,8 +9,7 @@
   "required": [],
   "traps": [
     "amazonSimpleStorageServiceGroup is a subServiceSelector parent. Call addService('amazonS3Standard', ...) for storage and addService('awsS3DataTransfer', ...) for data transfer. EstimateBuilder merges children into a single parent envelope; do not call addService('amazonSimpleStorageServiceGroup', ...) directly.",
-    "The storage size field is 's3StandardStorageSize', not 'storageAmount'. Shape: { value: '<n>', unit: 'gb|month' }.",
-    "Other storage classes (amazonS3IntelligentTiering, amazonS3StandardInfrequentAccess, amazonS3Glacier, etc.) are valid children but their estimateFor values and required fields are unverified — probe before adding to the catalog."
+    "The storage size field is 's3StandardStorageSize', not 'storageAmount'. Shape: { value: '<n>', unit: 'gb|month' }."
   ],
   "subServices": [
     {

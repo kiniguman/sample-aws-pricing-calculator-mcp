@@ -123,10 +123,10 @@ describe('traceTool session id propagation', () => {
   });
 
   it('propagates the session through an awaited dispatcher (mirrors transport.handleRequest)', async () => {
-    // Simulates the deployed shape: runWithSession wraps an outer
-    // dispatcher (transport.handleRequest in production), which awaits a
-    // promise chain that eventually reaches a tool handler. We need
-    // currentSessionId() to still return the right value at the
+    // Simulates the HTTP-transport shape: runWithSession wraps an outer
+    // dispatcher (transport.handleRequest), which awaits a promise chain
+    // that eventually reaches a tool handler. currentSessionId() must
+    // still return the right value at the
     // *handler's* call site, not just at the dispatcher's.
     const writes = [];
     const orig = process.stderr.write.bind(process.stderr);

@@ -17,10 +17,9 @@ Reads scenario YAMLs from eval/scenarios/. Each scenario specifies a
 list of MCP tool calls to drive and a list of predicate assertions to
 check the resulting trace against.
 
-The deployment-side eval (in quick-pricing-calculator/scripts/eval/)
-will eventually share the same scenario format and predicate library —
-the only difference is the driver substrate (HTTPS through Gateway vs.
-local stdio).
+A deployment-side eval can share the same scenario format and predicate
+library — the only difference is the driver substrate (HTTPS through a
+gateway vs. local stdio).
 """
 
 from __future__ import annotations
@@ -342,6 +341,8 @@ def main() -> int:
             print(f'  {len(trace.calls)} tool calls in {trace.duration_ms}ms')
             if args.verbose:
                 for c in trace.calls:
+                    # nosemgrep: is-function-without-parentheses
+                    # is_error is a `bool` field on the CallRecord dataclass.
                     tag = 'ERR' if c.is_error else 'ok'
                     print(f'    [{tag}] {c.tool}')
             for o in outcomes:

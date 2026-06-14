@@ -107,6 +107,8 @@ def assert_export_refused(
             reason='no export_estimate call in trace',
         )
     last = exports[-1]
+    # nosemgrep: is-function-without-parentheses
+    # is_error is a `bool` field on the CallRecord dataclass (line 37), not a method.
     if not last.is_error:
         return AssertionOutcome(
             status='fail', predicate='export_refused',
@@ -134,6 +136,8 @@ def assert_no_tool_errors(trace: TraceResult) -> AssertionOutcome:
     bucket. True tool errors (validation failures, save 4xx, lint
     refusals on export) flip isError:true and fail this.
     """
+    # nosemgrep: is-function-without-parentheses
+    # is_error is a `bool` field on the CallRecord dataclass (line 37), not a method.
     errors = [c for c in trace.calls if c.is_error]
     if not errors:
         return AssertionOutcome(status='ok', predicate='no_tool_errors')
@@ -299,11 +303,11 @@ def assert_estimate_renders_cost(
     """The saved URL renders a non-zero monthly cost in calculator.aws.
 
     Closes the gap between "lint says editable + roundtrip ok" and
-    "the rehydrated estimate computes a real cost." The 4146e2e bug
-    class — saved estimate that passes every other oracle but
-    renders $0 in the browser because PCT-required ≠ pricing-engine-
-    required — is invisible to lint and roundtrip; only this oracle
-    catches it.
+    "the rehydrated estimate computes a real cost." Catches the
+    silent-$0 bug class — saved estimate that passes every other
+    oracle but renders $0 in the browser because PCT-required is
+    narrower than what the pricing engine actually needs — which is
+    invisible to lint and roundtrip; only this oracle catches it.
 
     Reads the **summary total** at the top of the page (the "X.XX USD
     monthly" cell). The per-service detail rows are intentionally NOT
@@ -417,6 +421,12 @@ def _fetch_saved_blob(estimate_id: str) -> dict:
         return _FETCHED_BLOB_CACHE[estimate_id]
     import urllib.request
     url = f'https://d3knqfixx3sbls.cloudfront.net/{estimate_id}'
+    # nosemgrep: dynamic-urllib-use-detected
+    # nosec B310 - urllib.urlopen with hardcoded https host
+    # Host is a fixed public AWS Pricing Calculator CDN; only the path
+    # component varies. No file:// or custom-scheme injection vector since
+    # the URL string is built with a hardcoded https://...cloudfront.net
+    # prefix and only the estimate_id (a hex hash) is templated in.
     with urllib.request.urlopen(url, timeout=10) as resp:
         blob = json.loads(resp.read().decode('utf-8'))
     _FETCHED_BLOB_CACHE[estimate_id] = blob

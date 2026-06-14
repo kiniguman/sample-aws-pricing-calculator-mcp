@@ -19,8 +19,7 @@
     }
   ],
   "traps": [
-    "durationOfEachRequest is numericInput subtype: bare string '200' (no unit object). An older catalog typo'd it as 'requestDuration' — silently accepted by save API, ignored by pricing engine, $0 result.",
-    "Lambda hides duration/memory/architecture in the CSV summary regardless of value — present in editable estimate, absent in CSV oracle. Don't conclude 'partial' from CSV mismatch."
+    "durationOfEachRequest is numericInput subtype: bare string '200' (no unit object). An older catalog typo'd it as 'requestDuration' — silently accepted by save API, ignored by pricing engine, $0 result."
   ],
   "minimalConfig": {
     "region": "us-east-1",

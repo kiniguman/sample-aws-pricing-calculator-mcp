@@ -2,8 +2,8 @@ id: cognito-essentials-minimal
 description: |
   Cognito Essentials tier at 50K MAU + 250K token requests — well
   above Lite's 10K-MAU free tier. Tests that the templateIdHint
-  mechanism (4146e2e) routes the save through CognitoEssentials
-  instead of letting field-membership scoring's tie-break pick Lite.
+  mechanism routes the save through CognitoEssentials instead of
+  letting field-membership scoring's tie-break pick Lite.
   This is the canonical multi-template service: PCT exposes three
   tiers (Cognito Lite, CognitoEssentials, CognitoPlus); the catalog
   pins templateId to CognitoEssentials and the builder honors it.

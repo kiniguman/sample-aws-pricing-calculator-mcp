@@ -6,12 +6,11 @@ Drives mcp-server.js over stdio. No AWS credentials needed; the server
 itself talks to the public CloudFront endpoints.
 
 Returns a TraceResult that predicates.py can score. This is the
-CI-friendly path — fast, dep-free (no Bedrock, no Cognito, no Gateway),
-suitable for running on every PR in this repo.
+CI-friendly path — fast, dep-free (no Bedrock, no auth, no gateway
+hop), suitable for running on every PR in this repo.
 
-The deployment-side equivalent (HTTPS through Gateway, with Cognito
-auth) lives in quick-pricing-calculator/scripts/eval/mcp_client.py.
-Both produce the same TraceResult shape for the same predicate library.
+A deployment-side equivalent (HTTPS through a gateway with auth) can
+produce the same TraceResult shape and feed the same predicate library.
 """
 
 from __future__ import annotations
@@ -170,9 +169,7 @@ def _extract_url(text: str, parsed: Any) -> str | None:
 def _expand_template(value, context: dict):
     """Replace ${var} in scenario calls with values from context.
 
-    Mirrors quick-pricing-calculator/scripts/eval/quality.py's
-    _expand_template to keep scenario syntax compatible. Today only
-    estimate_id is threaded through context.
+    Today only estimate_id is threaded through context.
     """
     if isinstance(value, str) and value.startswith('${') and value.endswith('}'):
         key = value[2:-1]

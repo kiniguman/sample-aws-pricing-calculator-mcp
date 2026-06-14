@@ -353,7 +353,9 @@ async function main() {
     // Lazy require: stdio is the default and most-used path. Hoisting these
     // would force every stdio user (and the bundled stdio binary) to load
     // Express + the streamable HTTP transport just to throw them away.
+    // nosemgrep: lazy-load-module
     const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
+    // nosemgrep: lazy-load-module
     const express = require('express');
     const app = express();
     app.use(express.json());

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Emit dist/bundle-contract.json — the public contract between this bundle
-// and any consumer that runs it (today: quick-pricing-calculator).
+// and any consumer that runs it.
 //
 // v1 covers env vars only. The set is hand-curated rather than discovered
 // via AST traversal because:
@@ -10,10 +10,9 @@
 //   2. The set is small (5 today) and stable. A new env var is a deliberate
 //      change worth coding into this file as part of the same PR.
 //
-// Future v2/v3 (per quick-pricing-calculator/docs/superpowers/plans/
-// 2026-05-30-quick-as-better-consumer.md): tool name registry, trace
-// event schemas. Both can be appended to this object — consumers should
-// treat unknown top-level keys as additive.
+// Future v2/v3: tool name registry, trace event schemas. Both can be
+// appended to this object — consumers should treat unknown top-level
+// keys as additive.
 //
 // Output is written to dist/bundle-contract.json next to dist/mcp-server.js
 // so the consumer can sync them as a unit.
