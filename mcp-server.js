@@ -26,11 +26,33 @@ const desc = require('./lib/tool-descriptions');
 // CALCMCP_CATALOG_DIR is an eval-only override — the eval harness uses
 // it to point the server at a mutated copy of the catalog so probe
 // scenarios can ask "what does the agent do with bad catalog data?"
-// without rewriting the canonical files. Production deployments leave
-// it unset; if a deployment does set it, log to stderr so it's visible
-// in CloudWatch.
-const _catalogDir = process.env.CALCMCP_CATALOG_DIR
-  || path.join(__dirname, 'catalog', 'services');
+// without rewriting the canonical files. Default deployments leave it
+// unset; if a deployment does set it, log to stderr so it's visible.
+//
+// Resolution (when CALCMCP_CATALOG_DIR is unset):
+//   1. <__dirname>/catalog/services    — local dev (node mcp-server.js
+//      from the repo root) and any deployment that copies the catalog
+//      next to the entry script
+//   2. <__dirname>/../catalog/services — npm/npx install layout, where
+//      mcp-server.js lives at <pkg>/dist/mcp-server.js and the catalog
+//      ships at <pkg>/catalog/services per the package.json files[].
+//
+// First match wins. Falls through to an empty catalog (loadCatalog
+// returns an empty Map for a missing dir) which is safe but degraded —
+// agents miss the curated `minimalConfig` / `traps[]` enrichment.
+const fs = require('node:fs');
+function resolveCatalogDir() {
+  if (process.env.CALCMCP_CATALOG_DIR) return process.env.CALCMCP_CATALOG_DIR;
+  const candidates = [
+    path.join(__dirname, 'catalog', 'services'),
+    path.join(__dirname, '..', 'catalog', 'services'),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return candidates[0]; // returns the primary so error paths look familiar
+}
+const _catalogDir = resolveCatalogDir();
 if (process.env.CALCMCP_CATALOG_DIR) {
   process.stderr.write(`NOTE: catalog override active — loading from ${_catalogDir}\n`);
 }
