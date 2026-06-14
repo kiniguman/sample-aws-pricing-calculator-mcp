@@ -8,10 +8,6 @@
   "main": "mcp-server.js",
   "scripts": {
     "test": "node --test test/*.test.js",
-    "validate": "node validation/run-validation.js",
-    "validate:visual": "node validation/run-validation.js --visual",
-    "validate:report": "node validation/run-validation.js --report",
-    "validate:steps": "node --test validation/steps/calculator_steps.js",
     "mcp": "node mcp-server.js",
     "build": "esbuild mcp-server.js --bundle --platform=node --outfile=dist/mcp-server.js --format=cjs --minify && rm -f dist/aws-calculator.zip && zip dist/aws-calculator.zip mcp-server.js lib/aws-client.js lib/estimate-builder.js lib/ec2.js package.json"
   },
