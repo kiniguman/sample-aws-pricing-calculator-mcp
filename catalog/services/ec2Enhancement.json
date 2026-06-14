@@ -1,0 +1,55 @@
+{
+  "$schema": "../schema.json",
+  "serviceCode": "ec2Enhancement",
+  "displayName": "Amazon EC2",
+  "templateId": "template",
+  "status": "verified",
+  "lastVerifiedAt": "2026-05-16",
+  "verifiedEstimateId": "14da95c4aac0054414043dfd2d759d8d0438b51e",
+  "required": [
+    {
+      "field": "instanceType",
+      "hint": "AWS instance type (e.g. m5.large, t3.medium). Validated against EC2's instance-finder field.",
+      "example": "m5.large"
+    },
+    {
+      "field": "pricingStrategy",
+      "hint": "Pricing model. Accepts shorthand strings (ondemand, reserved, convertible, instanceSavings, computeSavings, spot) or a full object {model, term, upfrontPayment}. Valid term: '1yr' or '3yr'. Valid upfrontPayment: 'None', 'Partial', 'All'. EstimateBuilder normalizes via lib/ec2.js.",
+      "enum": [
+        "ondemand",
+        "reserved",
+        "convertible",
+        "instanceSavings",
+        "computeSavings",
+        "spot"
+      ],
+      "default": "ondemand"
+    }
+  ],
+  "traps": [
+    "Use serviceCode 'ec2Enhancement' with templateId 'template'. The legacy (eC2Next, quickEstimate) format saves cleanly but renders Read-only — the calculator cannot rehydrate it. EstimateBuilder forces this transformation automatically; do not bypass it.",
+    "Reserved Instances (standard, convertible) are HIDDEN under shared tenancy. For shared, 'reserved' silently maps to 'instance-savings' and 'convertible' to 'compute-savings'. To use real RIs, set tenancy to 'dedicated' or 'host'.",
+    "pricingStrategy term values are exact-case strings: '1 Year', '3 Year' — full words, capitalized. Lowercase variants silently produce wrong pricing.",
+    "pricingStrategy upfrontPayment values: 'None', 'Partial', 'All'. EstimateBuilder accepts shorthand 'No' and converts to 'None'.",
+    "The calculator silently demands tenancy, workload, workloadSelection, dataTransferForEC2, detailedMonitoringCheckbox, and ec2AdvancedPricingMetrics — even though the PCT does not mark them validations.required. EstimateBuilder injects all of these via lib/ec2.js#transformConfig.",
+    "utilization is HIDDEN inside the pricingStrategy component and does NOT appear in get_service_fields' field list. Production case 2026-06-03 (estimate 7898fb2d65a09e...): user asked for 80% utilization, agent saw no utilization field, gave up and told the user to 'apply a 0.8x multiplier' manually. To set utilization, pass top-level utilization: 'N' (string, 1–100); EstimateBuilder routes it into pricingStrategy.value.utilizationValue.",
+    "workload is the INSTANCE COUNT — use it for the user's quantity. For 'two instances' set workload: 2 (one entry) or save two entries with workload: 1 each. Either is fine. Do NOT save workload: 1 for 'two instances' and stash the '2' only in description (the saved estimate prices for one instance and the user reads two). Do NOT compensate for utilization with workload (e.g. workload: 0.8 to fake 80% utilization) — the total cost may match but the saved estimate structurally lies about how many instances are running. Use the explicit utilization field instead."
+  ],
+  "minimalConfig": {
+    "region": "us-east-1",
+    "description": "m5.large on-demand",
+    "instanceType": "m5.large",
+    "workload": 1,
+    "selectedOS": "linux",
+    "pricingStrategy": "ondemand"
+  },
+  "defaultFields": {
+    "dataTransferForEC2": {
+      "value": [
+        { "entryType": "INBOUND", "value": "", "unit": "tb_month", "fromRegion": "" },
+        { "entryType": "OUTBOUND", "value": "", "unit": "tb_month", "toRegion": "" },
+        { "entryType": "INTRA_REGION", "value": "", "unit": "tb_month" }
+      ]
+    }
+  }
+}

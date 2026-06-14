@@ -1,0 +1,23 @@
+{
+  "$schema": "../schema.json",
+  "serviceCode": "networkAddressTranslationNatGatewayVpc",
+  "displayName": "Network Address Translation (NAT) Gateway",
+  "templateId": "networkAddressTranslationGateway",
+  "status": "verified",
+  "traps": [
+    "PCT carries two parallel field sets — regional* (regionalNatGatewayCount, regionalNatGatewayAzCount, regionalNatGatewayDataProcessed) and the legacy non-regional (numberOfGateways, dataProcessedPerNATGateway). Both work, but minimalConfig uses the regional set — the path the current UI defaults to.",
+    "Manifest defaults are 5 gateways × 3 AZs — wildly over-sized for a 'hello world'. minimalConfig overrides to 1×1; agents reading manifest defaults directly will over-estimate ~5×."
+  ],
+  "minimalConfig": {
+    "region": "us-east-1",
+    "description": "Regional NAT Gateway",
+    "regionalNatGatewayCount": "1",
+    "regionalNatGatewayAzCount": "1",
+    "regionalNatGatewayDataProcessed": {
+      "value": "1",
+      "unit": "gb|month"
+    }
+  },
+  "lastVerifiedAt": "2026-05-29",
+  "verifiedEstimateId": "8298a3a15b4e3082bf0fe482c18a1d337cbe3b6a"
+}
