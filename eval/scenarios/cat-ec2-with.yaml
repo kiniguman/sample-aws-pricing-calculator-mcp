@@ -1,0 +1,16 @@
+id: cat-ec2-with
+description: |
+  Paired with cat-ec2-without. Tests whether the EC2
+  catalog entry is earning its place. Catalog role:
+  pricingStrategy normalization (shorthand "ondemand" / "reserved3yrAllUpfront"); tenancy-gated RI rewrite; 6 hardcoded silent-default fields the calculator demands.
+
+  Canonical (verified estimate): ~$70.08/mo. Band ±50%.
+prompt: |
+  Add an EC2 instance to my estimate in us-east-1.
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 35.04
+    max_monthly_usd: 105.12
+  - predicate: max_tool_calls
+    n: 15

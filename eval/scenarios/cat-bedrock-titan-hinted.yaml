@@ -1,0 +1,41 @@
+id: cat-bedrock-titan-hinted
+description: |
+  Three-way experiment companion to cat-bedrock-titan-{with,without}.
+
+  Catalog mutation: strips productCodes[] from amazonBedrock — same
+  state as cat-bedrock-titan-without. The ONLY difference vs that
+  scenario is the prompt: a redirect hint is appended inline,
+  simulating the experience an agent would have if the redirect
+  surfaced during discovery (search_services / get_service_fields)
+  instead of only post-save via the lint refusal.
+
+  Comparison reads:
+    - without (no hint)            → agent solves it on its own (or doesn't)
+    - hinted (prompt-hint only)    → does the discovery-time hint help?
+    - with (catalog-as-shipped)    → does the catalog field — which
+                                     today only fires on lint refusal —
+                                     match or beat the prompt-hint?
+
+  If `hinted` shows fewer tool calls and no lint refusal compared to
+  `without`, the discovery-time integration earns its place. If
+  `hinted` matches `without` (agent already gets there), the
+  redirect data isn't load-bearing at this prompt complexity.
+
+  Hint text mirrors what nextStepFor() emits today on
+  sub-service-active-list — same phrasing, just delivered earlier
+  in the agent loop.
+prompt: |
+  Add Amazon Titan Text Embeddings V2 to my estimate in us-east-1.
+
+  Note: Bedrock products like Titan are not added directly. Call add_service('amazon', { ... }) and select the Titan model via the modelSelection field — Bedrock is structured per-provider, not per-product.
+catalog_mutations:
+  - op: remove
+    service: amazonBedrock
+    path: /subServices/1/productCodes
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 0.5
+    max_monthly_usd: 200.0
+  - predicate: max_tool_calls
+    n: 15

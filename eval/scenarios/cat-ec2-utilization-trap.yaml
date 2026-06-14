@@ -1,0 +1,51 @@
+id: cat-ec2-utilization-trap
+description: |
+  Pinned to the production case 2026-06-03 (estimate 7898fb2d65a09e...).
+  User asked "create a pricing calculator for two g6e.24xlarge. 80%
+  utilization in us-east-1". Agent in a production deployment discovered
+  the EC2 fields, found no `utilization` field in get_service_fields,
+  saved with `pricingStrategy: 'ondemand'` (string shorthand) and
+  `workload: 1` — never reaching the `pricingStrategy.value.utilizationValue`
+  envelope shape that #123 fixes.
+
+  The saved blob shows `utilizationValue: "100"`, not "80". The agent's
+  closing message told the user to "manually adjust the calculator
+  once open" or "monitor actual usage and apply a 0.8x multiplier."
+
+  Two distinct gaps the scenario probes:
+    (a) Discovery — utilization is not in get_service_fields output,
+        not in the catalog `required[]` hints. The agent has no
+        agent-visible affordance to set it.
+    (b) Quantity — agent saved `workload: 1` for "two instances".
+        workload's manifest helpText doesn't equate it with instance
+        count.
+
+  Cost expectation: g6e.24xlarge on-demand × 2 × 80% util ≈ ~$5,800/mo.
+  The trap: 100% util saves as ~$7,250/mo. Band keeps the 80% case
+  inside, the 100% case outside — a 25% gap is enough to discriminate.
+  Wider min for any per-instance pricing variation; tight max as the
+  bug-detector.
+prompt: |
+  Create a pricing calculator for two g6e.24xlarge. 80% utilization in us-east-1.
+expectations:
+  - predicate: save_succeeded
+  # g6e.24xlarge OnDemand us-east-1 ≈ $15.07/hr × 730hr ≈ $11,000/mo
+  # per instance at 100% util. × 2 × 0.80 ≈ $17,600/mo target. Band
+  # [$15,500, $19,000] keeps the correct 80% save inside, excludes
+  # the 100%-util bug ($21,995/mo observed) and a workload=1 save
+  # ($8,800/mo).
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 15500.0
+    max_monthly_usd: 19000.0
+  # Structural assertion: cost-band can't distinguish "correct save"
+  # from "wrong save compensated by wrong workload" because workload
+  # and utilization compose multiplicatively. This predicate reads
+  # the saved blob and asserts the utilization envelope literally
+  # carries '80', not '100'.
+  - predicate: saved_blob_field_equals
+    paths:
+      - services.*.calculationComponents.pricingStrategy.value.utilizationValue
+      - groups.*.services.*.calculationComponents.pricingStrategy.value.utilizationValue
+    equals: '80'
+  - predicate: max_tool_calls
+    n: 20

@@ -1,0 +1,22 @@
+id: cat-elasticsearch-with
+description: |
+  Paired with cat-elasticsearch-without. New entry authored 2026-06-02
+  in response to 14 production lint blocks where agents iteratively
+  guessed Elasticsearch fields (Instance Family wrong, Storage selector
+  wrong vs. top-level storageType, columnFormIPM unwrapped). The
+  catalog's role here is documentation: the columnFormIPM shape, the
+  instance-vs-EBS storage distinction, the rebrand note, the
+  GP3-specific field group. Plus a verified minimalConfig that
+  rehydrates priced.
+
+  Canonical (verified estimate 6abd888a…): ~$1379/mo for 1× m6g.large
+  with GP3 100GB. Band ±50%.
+prompt: |
+  Add Amazon OpenSearch Service to my estimate in us-east-1.
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 600.0
+    max_monthly_usd: 2100.0
+  - predicate: max_tool_calls
+    n: 15

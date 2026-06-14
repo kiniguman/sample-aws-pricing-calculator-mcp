@@ -1,0 +1,18 @@
+id: cat-fargate-without
+description: |
+  Paired with cat-fargate-with. Catalog entry for Fargate removed.
+  Same prompt + same band. If the agent saves within band on
+  manifest+lint alone, the catalog entry is redundant; if it falls
+  outside the band, the entry earns its place.
+prompt: |
+  Add AWS Fargate to my estimate in us-east-1.
+catalog_mutations:
+  - op: removeEntry
+    service: awsFargate
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 265.96
+    max_monthly_usd: 797.87
+  - predicate: max_tool_calls
+    n: 15

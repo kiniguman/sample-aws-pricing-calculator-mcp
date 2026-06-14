@@ -1,0 +1,77 @@
+id: probe-lambda-stripped-required
+prompt: |
+  Add an AWS Lambda function to my estimate. 100 million requests
+  per month, us-east-1. Return the shareable URL.
+description: |
+  DAMAGE PROBE — observational, not regression.
+
+  Reverts Lambda's catalog `required[]` to a pre-fix state that lists
+  only PCT-required-ish fields (numberOfRequests + durationOfEachRequest),
+  removing the empirical promotions the verified entry contains
+  (sizeOfMemoryAllocated, storageAmountEphemeral, the architecture
+  toggles, invoke-mode). Also strips minimalConfig and traps so the
+  agent gets the "minimal-information" version of the catalog block.
+
+  Pre-fix shape mirrored: ~2026-05-15 catalog state where Lambda was
+  marked verified but missing the empirical required-set. Production
+  observed silent-$0 saves until the 4146e2e fix added the missing
+  fields back.
+
+  Goal: observe the agent's behavior with a misleading-but-not-empty
+  catalog. Three plausible outcomes:
+
+    A) Agent ships a partial config, lint refuses on required-input
+       (the post-2026-06-01 contract), refusal text names a missing
+       field. Agent retries with the field. Estimate priced.
+
+    B) Agent ships a partial config, lint says editable (the catalog
+       said nothing was required besides what the agent sent), save
+       proceeds, calculator silently defaults missing fields, summary
+       cost is wrong-but-plausible.
+
+    C) Agent reads the manifest's `optional[]` block (still complete
+       in this probe) and self-discovers the right field set.
+
+  This scenario asserts only what we want to MEASURE — no PASS/FAIL
+  contract. Reading the trajectory + final cost is the deliverable.
+catalog_mutations:
+  - op: replaceEntry
+    service: aWSLambda
+    value:
+      $schema: ../schema.json
+      serviceCode: aWSLambda
+      displayName: AWS Lambda
+      templateId: lambdaWithFreeTier
+      status: verified
+      required:
+        - field: numberOfRequests
+          hint: Total monthly requests as {value, unit}.
+          shape: "{ value: '<n>', unit: 'millionPerMonth' | 'perDay' | ... }"
+          example:
+            value: '1'
+            unit: millionPerMonth
+        - field: durationOfEachRequest
+          hint: Average duration per request in ms.
+          shape: string
+          example: '200'
+      optional: []
+      traps: []
+      subServices: []
+      minimalConfig:
+        region: us-east-1
+        description: API handler
+        numberOfRequests:
+          value: '1'
+          unit: millionPerMonth
+        durationOfEachRequest: '200'
+      lastVerifiedAt: '2026-05-15'
+      verifiedEstimateId: 0000000000000000000000000000000000000000
+expectations:
+  # Predicates here are observational, not gating. Run --json to see
+  # the trajectory, the final cost, and the lint verdict the
+  # mutated catalog produced. Nothing is expected to FAIL.
+  - predicate: trajectory_includes
+    sequence: [get_service_fields]
+    strict: false
+  - predicate: max_tool_calls
+    n: 20

@@ -1,0 +1,16 @@
+id: cat-s3-with
+description: |
+  Paired with cat-s3-without. Tests whether the S3 Standard
+  catalog entry is earning its place. Catalog role:
+  Sub-service-selector parent. Field name is s3StandardStorageSize, not storageAmount — agents calling bare amazonS3 hit a synthetic-slot field set.
+
+  Canonical (verified estimate): ~$11.5/mo. Band ±50%.
+prompt: |
+  Add Amazon S3 Standard storage to my estimate in us-east-1.
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 5.75
+    max_monthly_usd: 17.25
+  - predicate: max_tool_calls
+    n: 15

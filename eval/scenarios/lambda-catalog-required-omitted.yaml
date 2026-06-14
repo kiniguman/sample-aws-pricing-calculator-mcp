@@ -1,0 +1,59 @@
+id: lambda-catalog-required-omitted
+description: |
+  Catalog-required-field enforcement, Lambda case. Companion to
+  nat-iterative-required-omitted: that one tests a field flagged
+  required by both manifest AND catalog (NAT data-processed). This
+  one tests fields the manifest does NOT flag required, where catalog
+  + math walk are the only defenses.
+
+  A 2026-05-31 manifest probe confirmed Lambda's lambdaWithFreeTier
+  template flags ZERO of the agent-facing pricing fields as required:
+    - numberOfRequests:                   validations.required = false  (math walk catches via opt-in chain)
+    - durationOfEachRequest:              validations.required = false  (math walk catches)
+    - sizeOfMemoryAllocated:              validations.required = false  (math walk underderives — partial-pop gap)
+    - selectArchitectureRequests:         validations.required = false  ← catalog required (rate-table dropdown, no math operand)
+    - selectArchitectureConcurrency:      validations.required = false  ← catalog required
+
+  Without catalog enforcement, the linter passes Lambda saves that
+  omit architecture — those rehydrate at $0 silently because the
+  pricing engine has no architecture context for rate-table lookup.
+  Only catalog-aware enforcement catches selectArchitecture* (no
+  math operand, no displayIf gating, no manifest-default).
+
+  Scenario shape: add Lambda with the manifest-required-only subset
+  (numberOfRequests + the only manifest-flagged field
+  lambdaFunctionIncludeFreeTier_lambdaInvokeMode), call validate to
+  surface the verdict, call export. Expected:
+    - lint_verdict: required-input
+    - export_refused, refusal text names selectArchitectureRequests
+
+  This scenario only passes when the linter consults the catalog.
+  Reverting that wire-through flips it to FAIL.
+calls:
+  - tool: create_estimate
+    args:
+      name: eval-lambda-catalog-required-omitted
+  - tool: add_service
+    args:
+      estimate_id: ${estimate_id}
+      services: |
+        [{"service":"aWSLambda","group":"API","config":{
+          "region":"us-east-1",
+          "description":"API handler — catalog-required fields omitted",
+          "numberOfRequests":{"value":"1","unit":"millionPerMonth"},
+          "lambdaFunctionIncludeFreeTier_lambdaInvokeMode":"0"
+        }}]
+  - tool: validate_estimate
+    args:
+      estimate_id: ${estimate_id}
+  - tool: export_estimate
+    args:
+      estimate_id: ${estimate_id}
+expectations:
+  - predicate: trajectory_includes
+    sequence: [create_estimate, add_service, validate_estimate, export_estimate]
+    strict: true
+  - predicate: lint_verdict
+    expected: required-input
+  - predicate: export_refused
+    contains: selectArchitectureRequests

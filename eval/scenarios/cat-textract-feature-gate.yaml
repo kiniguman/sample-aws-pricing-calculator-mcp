@@ -1,0 +1,45 @@
+id: cat-textract-feature-gate
+description: |
+  Reproduces a production failure shape: agents tried to save Textract
+  estimates with numberOfPages + percentWithText (a complete "Detect
+  Document Text only" save) and the lint demanded percentWithQueries,
+  percentWithTables, expenseAPI, etc. — features the user did NOT want.
+  Each refused estimate flagged 16-22 fields.
+
+  Root cause: math walk's per-expression opt-in rule treated ANY
+  populated required user-input as "this expression is opted in,"
+  then flagged ALL its other required user-inputs. Textract has 25
+  basicMaths expressions of shape [numberOfPages, percentWithFeatureN];
+  populating just numberOfPages opted in all 25 → 24 false positives.
+
+  Fix: mirror the calculator's silent-zero behavior. Flag a missing
+  required user-input operand only when ≥2 user-input operands of the
+  expression are populated, OR an activeWithEvidence intermediate
+  signals chain-level opt-in (Lambda 3-op silent-zero trap).
+
+  Scripted scenario rather than LLM-driven: deterministic, reproduces
+  the production failure shape exactly. Calls add_service with the
+  minimal user-intent (Detect Document Text only); validates lint
+  returns 'editable'.
+calls:
+  - tool: create_estimate
+    args:
+      name: textract-feature-gate
+  - tool: add_service
+    args:
+      estimate_id: ${estimate_id}
+      services: |
+        [{"service":"amazonTextract","group":"OCR","config":{
+          "region":"us-east-1",
+          "description":"Detect Document Text only",
+          "numberOfPages":"1000",
+          "percentWithText":"100"
+        }}]
+  - tool: validate_estimate
+    args:
+      estimate_id: ${estimate_id}
+expectations:
+  # Pre-fix: lint refused with required-input + 23 failures.
+  # Post-fix: lint says editable, 0 false positives on feature gates.
+  - predicate: lint_verdict
+    expected: editable

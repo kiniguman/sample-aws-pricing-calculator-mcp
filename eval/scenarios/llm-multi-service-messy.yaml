@@ -1,0 +1,42 @@
+id: llm-multi-service-messy
+prompt: |
+  I'm building a serverless web API on AWS. Help me estimate the
+  monthly cost. The architecture has:
+    - AWS Lambda for the API handlers, ~50 million requests/month
+    - Amazon RDS PostgreSQL for the database
+    - Amazon S3 for static assets, ~500 GB stored
+    - NAT gateway for outbound traffic from private subnets,
+      processing about 100 GB/month
+    - CloudWatch for logging
+    - Application Load Balancer in front
+  Region: us-east-1. Return the shareable calculator URL.
+description: |
+  Multi-service messy prompt — closer to real user requests than the
+  scoped "Add NAT 100 GB/month" prompt that Sonnet 4.5 handled
+  cleanly. Production data showed 74% of NAT failures came from
+  agents batching the whole estimate into a cold build_estimate
+  call. This scenario tests whether the multi-service framing
+  triggers the same cold-call shortcut, even with Sonnet 4.5 and
+  catalog entries available.
+
+  Five of the six services have verified catalog entries (aWSLambda,
+  amazonRDSPostgreSQLDB, amazonS3* via Group, applicationLoadBalancer,
+  networkAddressTranslationNatGatewayVpc). The sixth (amazonCloudWatch)
+  had an unverified entry that was removed 2026-06-01 and now relies
+  on the manifest alone. If the agent calls get_service_fields
+  per-service it should produce a priced estimate. If it batches
+  cold, NAT will likely render $0 because of the required-field-
+  presence trap.
+expectations:
+  - predicate: save_succeeded
+  - predicate: no_tool_errors
+  # The diagnostic predicate: does the agent do discovery before
+  # batching into a single build_estimate? Loose match — the agent
+  # might call discovery once for some services and skip for others.
+  - predicate: trajectory_includes
+    sequence: [get_service_fields]
+    strict: false
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 50.0
+  - predicate: max_tool_calls
+    n: 20

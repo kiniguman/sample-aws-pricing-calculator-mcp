@@ -1,0 +1,36 @@
+id: llm-s3-naming
+prompt: |
+  Build an AWS Pricing Calculator estimate for Amazon S3. Store
+  500 GB of data with light request traffic, us-east-1. Return the
+  shareable URL.
+description: |
+  The S3 brand-name discovery test. The manifest has 19 keys
+  containing "s3" — the deprecated parent `amazonS3` (isActive:false,
+  exposes synthetic slot ids), the verified group parent
+  `amazonSimpleStorageServiceGroup`, and concrete classes like
+  `amazonS3Standard`. Production agents calling `add_service` with
+  bare `amazonS3` save an unrenderable blob (synthetic slot ids
+  passed as field values). The 2026-05-30 fix makes
+  get_service_fields("amazonS3") return a `redirect_to_parent`
+  envelope pointing at `amazonS3Standard` and `awsS3DataTransfer`.
+
+  This scenario verifies the redirect actually steers an LLM-driven
+  agent to a real service code. The cost predicate is the load-
+  bearing assertion: if the agent ignores the redirect and saves
+  with bare `amazonS3`, the rehydrated estimate uses synthetic
+  slot ids in its configSummary and won't render priced cost.
+  Therefore non-zero cost = the redirect was honored.
+
+  500 GB on S3 Standard at us-east-1 prices to ~$11.50/mo as of
+  2026-05-30; floor of $5 leaves headroom for tier choices but
+  catches the broken-blob $0 rehydrate.
+expectations:
+  - predicate: save_succeeded
+  - predicate: no_tool_errors
+  - predicate: trajectory_includes
+    sequence: [get_service_fields]
+    strict: false
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 5.0
+  - predicate: max_tool_calls
+    n: 12

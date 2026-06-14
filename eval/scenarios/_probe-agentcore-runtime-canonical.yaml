@@ -1,0 +1,27 @@
+id: _probe-agentcore-runtime-canonical
+description: |
+  Reference: scripted save of AgentCore Runtime at a "moderate
+  workload" config. Used to compare probe-agentcore-runtime-*
+  outcomes. No catalog exists for this service today (and never has
+  in this repo's history) — so this scenario sets the canonical
+  baseline I want to measure agent-chosen configs against.
+
+  Workload: 100K agent sessions / month, 60s avg duration, 50%
+  I/O wait, 0.5 vCPU avg, 2 GB session memory.
+  Underscore-prefixed; ephemeral; not a regression scenario.
+calls:
+  - tool: build_estimate
+    args:
+      name: probe-ref-agentcore-runtime
+      services: |
+        [{"service":"agentCoreRuntime","group":"Compute","config":{
+          "region":"us-east-1",
+          "description":"AgentCore Runtime moderate workload",
+          "Number_of_agentsessions_per_month":"100000",
+          "Average_session_duration_seconds":"60",
+          "IO_wait_time_percentage":"50",
+          "Average_vCPU_excluding_IO_wait":"0.5",
+          "Average_session_memory_GB":"2"
+        }}]
+expectations:
+  - predicate: save_succeeded

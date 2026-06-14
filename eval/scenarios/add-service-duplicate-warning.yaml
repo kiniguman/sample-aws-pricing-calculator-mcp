@@ -1,0 +1,62 @@
+id: add-service-duplicate-warning
+description: |
+  Production case 2026-06-07: two sessions on the same prompt produced
+  different saves because Sonnet's retry path stacked `add_service`
+  calls without deduplicating. Session 1 saved 3 entries (correct);
+  session 2 saved 5 (the agent re-added Prod with explicit tenancy on
+  retry, the original Prod entry stayed). Cost inflated by 33%.
+
+  add_service has always been append-only; no signal to the agent that
+  a duplicate is forming. The fix surfaces an `existing_entry: {...}`
+  field on the response when (serviceCode, description) already
+  matches a stored entry. Combined with description prose explaining
+  retry semantics, capable agents can distinguish "add another" from
+  "replace the previous attempt."
+
+  Scripted scenario — two add_service calls with identical service +
+  description. Pre-fix: both calls return success with no signal of
+  the duplicate. Post-fix: second call's response carries
+  existing_entry. Saved blob has TWO entries either way (we don't
+  auto-dedupe; that's a behavior change deferred for now).
+calls:
+  - tool: create_estimate
+    args:
+      name: dup-warn-test
+  - tool: add_service
+    args:
+      estimate_id: ${estimate_id}
+      services: |
+        [{"service":"aWSLambda","group":"App","config":{
+          "region":"us-east-1",
+          "description":"API handler",
+          "numberOfRequests":{"value":"1","unit":"millionPerMonth"},
+          "durationOfEachRequest":"200",
+          "sizeOfMemoryAllocated":{"value":"1","unit":"gb|NA"},
+          "selectArchitectureRequests":"1",
+          "selectArchitectureConcurrency":"1"
+        }}]
+  - tool: add_service
+    args:
+      estimate_id: ${estimate_id}
+      services: |
+        [{"service":"aWSLambda","group":"App","config":{
+          "region":"us-east-1",
+          "description":"API handler",
+          "numberOfRequests":{"value":"1","unit":"millionPerMonth"},
+          "durationOfEachRequest":"200",
+          "sizeOfMemoryAllocated":{"value":"1","unit":"gb|NA"},
+          "selectArchitectureRequests":"1",
+          "selectArchitectureConcurrency":"1"
+        }}]
+expectations:
+  # The second call's response array's first entry MUST carry
+  # existing_entry. response_field_present walks dotted paths into the
+  # parsed JSON; '0.existing_entry' = first array element's
+  # existing_entry key.
+  - predicate: response_field_present
+    tool: add_service
+    field_path: '0.existing_entry'
+  # And it should still report success: true (we warn, don't refuse).
+  - predicate: response_field_present
+    tool: add_service
+    field_path: '0.success'

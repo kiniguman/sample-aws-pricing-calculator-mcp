@@ -1,0 +1,48 @@
+id: build-estimate-multi
+description: |
+  Multi-service one-shot via build_estimate. Lambda + S3 + DynamoDB,
+  one tool call. Tests the create+add+lint+save fast path that
+  agents are nudged toward. Lambda and S3 configs taken from
+  catalog/services/*.json minimalConfig; DynamoDB has no catalog
+  entry (one of the unverified entries removed 2026-06-01) but
+  the manifest-shape config below lints editable and renders
+  priced today.
+calls:
+  - tool: build_estimate
+    args:
+      name: eval-build-estimate-multi
+      services: |
+        [
+          {"service":"aWSLambda","group":"API","config":{
+            "region":"us-east-1",
+            "description":"API handler",
+            "numberOfRequests":{"value":"1","unit":"millionPerMonth"},
+            "durationOfEachRequest":"200",
+            "sizeOfMemoryAllocated":{"value":"1","unit":"gb|NA"},
+            "storageAmountEphemeral":{"value":"512","unit":"mb|NA"},
+            "selectArchitectureRequests":"1",
+            "selectArchitectureConcurrency":"1",
+            "lambdaFunctionIncludeFreeTier_lambdaInvokeMode":"0"
+          }},
+          {"service":"amazonS3Standard","group":"Storage","config":{
+            "region":"us-east-1",
+            "description":"Object storage",
+            "s3StandardStorageSize":{"value":"500","unit":"gb|month"}
+          }},
+          {"service":"dynamoDbOnDemand","group":"Storage","config":{
+            "region":"us-east-1",
+            "description":"On-demand DynamoDB table",
+            "selectTableClass":"standard",
+            "dataStorageSize":{"value":"1","unit":"gb|NA"},
+            "averageItemSizeForAllAttributes":{"value":"1","unit":"kb|NA"},
+            "writeRateId":{"value":"1","unit":"perSecond"}
+          }}
+        ]
+expectations:
+  - predicate: save_succeeded
+  - predicate: no_tool_errors
+  - predicate: response_field_present
+    tool: build_estimate
+    field_path: sharable_url
+  - predicate: max_tool_calls
+    n: 1

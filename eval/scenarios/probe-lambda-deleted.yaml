@@ -1,0 +1,50 @@
+id: probe-lambda-deleted
+prompt: |
+  Add an AWS Lambda function to my estimate. 100 million requests
+  per month, us-east-1. Return the shareable URL.
+description: |
+  DAMAGE PROBE — observational, not regression.
+
+  Removes Lambda's catalog entry entirely. Same prompt as
+  probe-lambda-stripped-required, so behavior diff is purely the
+  catalog content (no entry vs wrong entry).
+
+  This is the controlled experiment for "if the catalog were fully
+  auto-derived from the manifest, what does the agent lose by not
+  having it?" The Fargate-deleted probe (probe-fargate-deleted)
+  showed agents reach canonical cost without a catalog for an
+  unfamiliar service. This probe asks the same for a maximally
+  familiar service where the manifest under-flags pricing-relevant
+  fields (Lambda memory, architecture, ephemeral storage are all
+  optional in the manifest but pricing-engine-required).
+
+  Three plausible outcomes:
+
+    A) Cost matches canonical ($346/mo) — agent reads manifest
+       fields carefully, picks 1 GB memory and 200ms duration from
+       its own training prior, ships a correct estimate. Implies
+       catalog's example values are not load-bearing for this
+       model class.
+
+    B) Cost ~$34/mo (matches probe-lambda-stripped-required) —
+       agent picks small defaults (128 MB, 100ms) regardless of
+       whether the catalog has a bad minimalConfig or no
+       minimalConfig at all. Implies the catalog's example values
+       are load-bearing — without them, agents drift to manifest
+       defaults.
+
+    C) Cost is something else entirely — interesting third path
+       worth investigating.
+
+  Outcome A means most of the Lambda catalog is fat (the manifest
+  alone is enough). Outcome B means minimalConfig values are
+  doing real work that derivation cannot replace.
+catalog_mutations:
+  - op: removeEntry
+    service: aWSLambda
+expectations:
+  - predicate: trajectory_includes
+    sequence: [get_service_fields]
+    strict: false
+  - predicate: max_tool_calls
+    n: 20

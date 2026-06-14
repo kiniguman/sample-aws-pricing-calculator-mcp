@@ -1,0 +1,33 @@
+id: probe-agentcore-runtime-specific
+prompt: |
+  Add Amazon Bedrock AgentCore Runtime to my estimate. us-east-1.
+  Workload: 100,000 agent sessions per month, average session
+  duration 60 seconds, 50% I/O wait time, 0.5 vCPU per session
+  excluding I/O wait, 2 GB average session memory. Return URL.
+description: |
+  FALSIFIER — tests H1 ("specific prompts → catalog adds little")
+  on a service with weak training prior.
+
+  AgentCore Runtime launched late 2024 / early 2025. No catalog
+  entry exists in this repo. Sonnet 4.5's training likely has
+  documentation but probably few examples or pricing knowledge.
+
+  Specific prompt names every required value. If the framing
+  holds, the agent should:
+    - Read manifest fields
+    - Map each prompt value to the right field id (5 numericInput
+      / percentInput fields)
+    - Ship a save matching canonical \$68.79.
+
+  This pushes H1 harder than the previous specific-prompt probes
+  because the field IDs are unfamiliar (Number_of_agentsessions_per_month,
+  Average_session_duration_seconds — verbose snake_case with
+  unusual capitalization). Past evidence (probe-rds-pg-deleted-specific,
+  probe-stepfunctions-deleted-specific) suggests the agent reads
+  field IDs carefully; this confirms whether unfamiliarity matters.
+expectations:
+  - predicate: trajectory_includes
+    sequence: [get_service_fields]
+    strict: false
+  - predicate: max_tool_calls
+    n: 20

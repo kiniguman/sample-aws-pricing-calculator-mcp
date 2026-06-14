@@ -1,0 +1,16 @@
+id: cat-cognito-with
+description: |
+  Paired with cat-cognito-without. Tests whether the Cognito Essentials
+  catalog entry is earning its place. Catalog role:
+  Multi-tier templateId routing (Lite vs Essentials vs Plus). Each tier has its own field-name prefix; mixing them or picking the wrong template silently zeros the estimate.
+
+  Canonical (verified estimate): ~$600/mo. Band ±50%.
+prompt: |
+  Add Amazon Cognito Essentials to my estimate in us-east-1.
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 300
+    max_monthly_usd: 900
+  - predicate: max_tool_calls
+    n: 15

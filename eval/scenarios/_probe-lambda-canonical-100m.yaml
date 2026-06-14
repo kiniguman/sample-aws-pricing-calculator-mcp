@@ -1,0 +1,25 @@
+id: _probe-lambda-canonical-100m
+description: |
+  Reference data: scripted save of canonical Lambda config at 100M req/mo
+  to compare against probe-lambda-stripped-required's agent-chosen config.
+  Underscore prefix marks this as ephemeral, not a real eval scenario.
+calls:
+  - tool: build_estimate
+    args:
+      name: probe-ref-lambda-100m-canonical
+      services: |
+        [{"service":"aWSLambda","group":"API","config":{
+          "region":"us-east-1",
+          "description":"reference Lambda 100M req canonical",
+          "numberOfRequests":{"value":"100","unit":"millionPerMonth"},
+          "durationOfEachRequest":"200",
+          "sizeOfMemoryAllocated":{"value":"1","unit":"gb|NA"},
+          "storageAmountEphemeral":{"value":"512","unit":"mb|NA"},
+          "selectArchitectureRequests":"1",
+          "selectArchitectureConcurrency":"1",
+          "lambdaFunctionIncludeFreeTier_lambdaInvokeMode":"0"
+        }}]
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 1.0

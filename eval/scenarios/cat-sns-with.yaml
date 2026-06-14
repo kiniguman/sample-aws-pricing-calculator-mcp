@@ -1,0 +1,16 @@
+id: cat-sns-with
+description: |
+  Paired with cat-sns-without. Tests whether the SNS
+  catalog entry is earning its place. Catalog role:
+  Sub-service-selector parent (standardTopics / fifoTopics children).
+
+  Canonical (verified estimate): ~$1.5/mo. Band ±50%.
+prompt: |
+  Add Amazon SNS to my estimate in us-east-1.
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 0.75
+    max_monthly_usd: 2.25
+  - predicate: max_tool_calls
+    n: 15

@@ -1,0 +1,33 @@
+id: probe-lambda-variant-cold-start
+prompt: |
+  Add a Lambda function for a customer-facing payment API. We need
+  consistent sub-100ms response times even after periods of low
+  traffic. 5 million requests per month, us-east-1. Return the URL.
+description: |
+  VARIANT-SELECTION PROBE — observational.
+
+  Tests whether the agent picks Provisioned Concurrency for a
+  prompt that signals cold-start sensitivity ("consistent sub-100ms
+  even after low traffic"). No catalog entry — agent works from
+  manifest fields only, which expose all four Lambda variant cards
+  (Service settings, Provisioned Concurrency, SnapStart, Edge,
+  Response Streaming).
+
+  Outcomes:
+    A) Saves with only standard Lambda fields → agent defaults to
+       canonical variant regardless of cold-start signal. Implies
+       single-variant catalog suffices; trap text might help.
+    B) Saves with provisionedConcurrency / timeForProvisionedConcurrency
+       / etc. populated → agent recognizes the variant signal.
+       Implies multi-variant catalog representation could help
+       agents differentiate.
+    C) Saves a mix — partial variant adoption.
+catalog_mutations:
+  - op: removeEntry
+    service: aWSLambda
+expectations:
+  - predicate: trajectory_includes
+    sequence: [get_service_fields]
+    strict: false
+  - predicate: max_tool_calls
+    n: 20

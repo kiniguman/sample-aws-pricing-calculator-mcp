@@ -1,0 +1,26 @@
+id: cat-elasticsearch-without
+description: |
+  Paired with cat-elasticsearch-with. Catalog removed.
+
+  Decision rule (drift audit):
+    - both saved & ratio < 3× → REDUNDANT, delete entry
+    - with saves, without fails → EARNS PLACE
+    - both fail → BROKEN
+
+  Pre-author production data showed agents iterating through 4-7
+  lint refusals before saving anything (or never saving). Without
+  the catalog's columnFormIPM shape guidance + Instance Family enum
+  + storage-distinction trap, expect either a fail-to-save or a
+  cost wildly outside the band.
+prompt: |
+  Add Amazon OpenSearch Service to my estimate in us-east-1.
+catalog_mutations:
+  - op: removeEntry
+    service: amazonElasticsearchService
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 600.0
+    max_monthly_usd: 2100.0
+  - predicate: max_tool_calls
+    n: 15

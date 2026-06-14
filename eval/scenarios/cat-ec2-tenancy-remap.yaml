@@ -1,0 +1,67 @@
+id: cat-ec2-tenancy-remap
+description: |
+  Sub-task C 2026-06-04 (#126/#133, memory: project_calculator_defaults_missing_required
+  tenancy hazard).
+
+  EC2's transformConfig silently remaps reserved/convertible →
+  instance-savings/compute-savings under shared tenancy because the
+  calculator hides Standard/Convertible RIs in that combo. The remap
+  stays (otherwise every existing reserved+shared save would break).
+
+  This scenario exercises the remap path:
+    1. add_service with pricingStrategy: "reserved1yrNoUpfront" and
+       tenancy: "shared" — transformConfig remaps to instance-savings.
+    2. saved_blob_field_equals confirms selectedOption == "instance-savings"
+       (the post-remap state — what the user actually got, NOT what
+       they asked for).
+    3. The companion lint predicate `tenancy-pricing-mismatch` MUST NOT
+       fire on this save — the post-remap state is the legitimate
+       shared-tenancy form. False positive here would block every
+       agent's reserved-under-shared workflow.
+
+  The ec2.tenancy_remap trace event fires in the trace stream (not
+  asserted here — it's an observability signal for dashboards, not an
+  agent-visible response).
+
+  The hand-constructed-blob case (shared+standard saved DIRECTLY,
+  bypassing transformConfig — e.g. via import_estimate of a malformed
+  blob) is what the predicate does flag, but that case isn't reachable
+  through the MCP surface with read-only tools, so it's covered by
+  unit tests in test/can-rehydrate.test.js#tenancy-pricing-mismatch
+  rather than an eval scenario.
+calls:
+  - tool: create_estimate
+    args:
+      name: ec2-tenancy-remap-test
+  - tool: add_service
+    args:
+      estimate_id: ${estimate_id}
+      services: |
+        [{"service":"ec2Enhancement","group":"Compute","config":{
+          "region":"us-east-1",
+          "description":"reserved 1yr no-upfront under shared tenancy",
+          "instanceType":"m5.large",
+          "selectedOS":"linux",
+          "workload":1,
+          "tenancy":"shared",
+          "pricingStrategy":"reserved1yrNoUpfront"
+        }}]
+  - tool: export_estimate
+    args:
+      estimate_id: ${estimate_id}
+expectations:
+  - predicate: save_succeeded
+  # Post-remap state: the agent asked for reserved, the transform
+  # quietly delivered instance-savings. The saved blob shows
+  # instance-savings.
+  - predicate: saved_blob_field_equals
+    paths:
+      - services.*.calculationComponents.pricingStrategy.value.selectedOption
+      - groups.*.services.*.calculationComponents.pricingStrategy.value.selectedOption
+    equals: instance-savings
+  # Tenancy stays shared — only the strategy was rewritten.
+  - predicate: saved_blob_field_equals
+    paths:
+      - services.*.calculationComponents.tenancy.value
+      - groups.*.services.*.calculationComponents.tenancy.value
+    equals: shared

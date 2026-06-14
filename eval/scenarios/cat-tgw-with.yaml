@@ -1,0 +1,16 @@
+id: cat-tgw-with
+description: |
+  Paired with cat-tgw-without. Tests whether the Transit Gateway
+  catalog entry is earning its place. Catalog role:
+  Sub-service of amazonVirtualPrivateCloud — EstimateBuilder wraps it automatically; agents call add_service with the child code, not the parent.
+
+  Canonical (verified estimate): ~$38.5/mo. Band ±50%.
+prompt: |
+  Add an AWS Transit Gateway to my estimate in us-east-1.
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 19.25
+    max_monthly_usd: 57.75
+  - predicate: max_tool_calls
+    n: 15

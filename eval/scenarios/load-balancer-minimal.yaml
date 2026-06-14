@@ -1,0 +1,48 @@
+id: load-balancer-minimal
+description: |
+  Application Load Balancer at the catalog's verified minimalConfig
+  (1 ALB + 5 GB/hour processed for EC2 targets). Encodes the
+  ALB-pricing-requires-an-LCU-driver finding from 2026-05-30
+  catalog batch 2: sending only numberOfApplicationLoadBalancers
+  triggers a "Please specify value for at least one of the fields"
+  warning in the UI; adding any one LCU driver (the four candidates
+  documented in the catalog's traps[]) unlocks pricing.
+
+  ALB is wrapped in an elasticLoadBalancing parent envelope at save
+  time (subType: subService) — EstimateBuilder handles this
+  automatically. The saved blob places fields on the
+  applicationLoadBalancer sub-service; the parent's calculation
+  components stay empty.
+calls:
+  - tool: create_estimate
+    args:
+      name: eval-alb-minimal
+  - tool: add_service
+    args:
+      estimate_id: ${estimate_id}
+      services: |
+        [{"service":"applicationLoadBalancer","group":"Network","config":{
+          "region":"us-east-1",
+          "description":"Application Load Balancer",
+          "numberOfApplicationLoadBalancers":"1",
+          "sizeOfDataProcessedForEC2InstanceAndIPAddressTargets":{"value":"5","unit":"gb|hour"}
+        }}]
+  - tool: validate_estimate
+    args:
+      estimate_id: ${estimate_id}
+  - tool: export_estimate
+    args:
+      estimate_id: ${estimate_id}
+expectations:
+  - predicate: save_succeeded
+  - predicate: no_tool_errors
+  - predicate: lint_verdict
+    expected: editable
+  - predicate: trajectory_includes
+    sequence: [create_estimate, add_service, validate_estimate, export_estimate]
+    strict: true
+  # ALB at this volume prices ~$45/mo. Floor of $20 catches any
+  # silent-LCU-driver-drop regression while leaving headroom for
+  # PCT pricing tweaks.
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 20.0

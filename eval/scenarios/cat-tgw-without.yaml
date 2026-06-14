@@ -1,0 +1,18 @@
+id: cat-tgw-without
+description: |
+  Paired with cat-tgw-with. Catalog entry for Transit Gateway removed.
+  Same prompt + same band. If the agent saves within band on
+  manifest+lint alone, the catalog entry is redundant; if it falls
+  outside the band, the entry earns its place.
+prompt: |
+  Add an AWS Transit Gateway to my estimate in us-east-1.
+catalog_mutations:
+  - op: removeEntry
+    service: transitGatewayVpc
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 19.25
+    max_monthly_usd: 57.75
+  - predicate: max_tool_calls
+    n: 15

@@ -1,0 +1,22 @@
+id: _probe-fargate-canonical-1vcpu-16gb
+description: |
+  Reference: scripted Fargate save with the CORRECT memory field for
+  vcpuPerTask=1 (memoryStandardFargateOnDemand at 16 GB). Underscore-
+  prefixed; ephemeral.
+calls:
+  - tool: build_estimate
+    args:
+      name: probe-ref-fargate-canonical
+      services: |
+        [{"service":"awsFargate","group":"Compute","config":{
+          "region":"us-east-1",
+          "description":"Fargate canonical 1 vCPU 16 GB",
+          "numberOfTasks":{"value":"10","unit":"perDay"},
+          "taskDuration":{"value":"60","unit":"min"},
+          "vcpuPerTask":"1",
+          "operatingSystem":"linux",
+          "selectArchitecture":"x86",
+          "memoryStandardFargateOnDemand":{"value":"16","unit":"gb|NA"}
+        }}]
+expectations:
+  - predicate: save_succeeded

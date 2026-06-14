@@ -1,0 +1,28 @@
+id: cat-lambda-with
+description: |
+  Paired with cat-lambda-without. Lambda's catalog has two real
+  residuals in required[]: selectArchitectureRequests and
+  selectArchitectureConcurrency. These dropdowns drive rate-table
+  selection in the pricing engine — they're not math operands, so
+  the math walk can't catch them. If the agent omits them, the
+  pricing engine has no architecture context and silently zeros
+  the request-cost path (probed: $346 → $0).
+
+  Vague-but-not-silent prompt: gives request volume so the math
+  walk doesn't help. The catalog's required[] is the only defense
+  against the agent forgetting architecture.
+
+  This scenario uses the catalog as-is. Asserts a priced save.
+prompt: |
+  Add an AWS Lambda function to my estimate in us-east-1.
+expectations:
+  - predicate: save_succeeded
+  # Canonical Lambda at 100M req/mo, 200ms duration, 1GB memory,
+  # x86 ≈ $346/mo. Band [$200, $500]. cat-lambda-without sees
+  # ~$34/mo (10× under) when architecture is omitted; that fails
+  # the floor.
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 200.0
+    max_monthly_usd: 500.0
+  - predicate: max_tool_calls
+    n: 10

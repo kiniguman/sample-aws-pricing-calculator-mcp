@@ -1,0 +1,58 @@
+id: direct-connect-minimal
+description: |
+  AWS Direct Connect at the catalog's verified minimalConfig — one
+  1Gbps Dedicated port at Newark NJ, 730 hours/mo (always-on).
+
+  Direct Connect uses columnFormIPM (lesson from RDS PG: wrapped
+  shape, not dotted paths) but with a TWIST: the selectors carry
+  a 'port:' prefix ('port:Direct Connect Location', 'port:Connection
+  Type', 'port:Capacity'). The prefix is part of the key, not a
+  separator — sending without it silently lands in the blob but
+  the pricing engine falls back to defaults.
+
+  Also unlike RDS, DC's matrix has NO 'undefined' utilization slot.
+  Utilization (port hours/mo) is a separate top-level field that
+  pairs with the matrix. Two-shape composition: matrix for
+  configuration, scalar for time.
+
+  At 1Gbps Dedicated × 730 hours/mo this prices ~$219/mo
+  ($0.30/hour × 730).
+calls:
+  - tool: create_estimate
+    args:
+      name: eval-direct-connect-minimal
+  - tool: add_service
+    args:
+      estimate_id: ${estimate_id}
+      services: |
+        [{"service":"awsDirectConnect","group":"Network","config":{
+          "region":"us-east-1",
+          "description":"1Gbps Dedicated port at Newark NJ, full-month utilization",
+          "columnFormIPM":{"value":[{
+            "Number of Ports":{"value":"1"},
+            "port:Direct Connect Location":{"value":"165 Halsey Street, Newark, NJ"},
+            "port:Connection Type":{"value":"Dedicated"},
+            "port:Capacity":{"value":"1G"}
+          }]},
+          "utilization":{"value":"730","unit":"hoursPerMonth"}
+        }}]
+  - tool: validate_estimate
+    args:
+      estimate_id: ${estimate_id}
+  - tool: export_estimate
+    args:
+      estimate_id: ${estimate_id}
+expectations:
+  - predicate: save_succeeded
+  - predicate: no_tool_errors
+  - predicate: lint_verdict
+    expected: editable
+  - predicate: trajectory_includes
+    sequence: [create_estimate, add_service, validate_estimate, export_estimate]
+    strict: true
+  # 1Gbps Dedicated × 730 hours = ~$219/mo. Floor of $100 catches
+  # the namespaced-selector regression class (where the port:
+  # prefix gets stripped and the pricing engine falls back to a
+  # cheaper default tier or zero).
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 100.0

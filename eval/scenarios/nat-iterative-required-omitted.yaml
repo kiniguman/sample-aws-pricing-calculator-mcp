@@ -1,0 +1,71 @@
+id: nat-iterative-required-omitted
+description: |
+  Guards the export-refusal contract introduced when exportWithLint
+  was extended to refuse on `required-input` verdicts (in addition to
+  `read-only`). Reproduces the failure pattern observed in production
+  estimate 1ecef0095a36a7ae84c59c8fb350153ffdc019d2 (2026-05-31): an
+  iterative flow (add_service then export_estimate) tries to save a
+  NAT gateway with regionalNatGatewayDataProcessed omitted (catalog +
+  manifest both flag it required).
+
+  Pre-fix behavior (the bug): save_succeeded with a URL; opening it
+  showed the calculator silently defaulting the missing field and
+  pricing $32.85/mo against a value the user never chose. Lint
+  flagged required-input but exportWithLint only refused on
+  read-only.
+
+  Post-fix behavior (this contract): export_estimate must refuse,
+  no URL is minted, lint_verdict surfaces required-input, and the
+  refusal text names the missing field so the agent knows what to
+  add before retrying.
+
+  Companion unit test:
+    test/mcp-build-estimate.test.js
+      "exportWithLint: refuses and skips save when lint says
+       required-input"
+
+  Together they form the falsifiable contract: integration scenario
+  proves the live calculator stays out of the broken state; unit
+  test proves the helper refuses synchronously without touching the
+  network.
+calls:
+  - tool: create_estimate
+    args:
+      name: eval-nat-iterative-omitted
+  # Deliberate omission: regionalNatGatewayDataProcessed is missing.
+  # Catalog says required, manifest says required. Today this saves
+  # without complaint; option 1 should make export refuse.
+  - tool: add_service
+    args:
+      estimate_id: ${estimate_id}
+      services: |
+        [{"service":"networkAddressTranslationNatGatewayVpc","group":"Networking","config":{
+          "region":"us-east-1",
+          "description":"NAT gateway, missing data-processed",
+          "regionalNatGatewayCount":"1",
+          "regionalNatGatewayAzCount":"1"
+        }}]
+  # validate_estimate exposes the lint verdict in the response body
+  # so the lint_verdict predicate has something to read. Production B
+  # didn't make this call, but for the eval we want the verdict
+  # surfaced explicitly.
+  - tool: validate_estimate
+    args:
+      estimate_id: ${estimate_id}
+  - tool: export_estimate
+    args:
+      estimate_id: ${estimate_id}
+expectations:
+  # The agent runs the same 4-tool sequence regardless of outcome.
+  - predicate: trajectory_includes
+    sequence: [create_estimate, add_service, validate_estimate, export_estimate]
+    strict: true
+  # validate_estimate must surface the verdict explicitly so an agent
+  # could opt out before export. The lint event also fires inside
+  # export_estimate but its data isn't on a tool result.
+  - predicate: lint_verdict
+    expected: required-input
+  # The contract: export refused, no URL minted, refusal text names
+  # the missing field so the agent knows what to add before retrying.
+  - predicate: export_refused
+    contains: regionalNatGatewayDataProcessed

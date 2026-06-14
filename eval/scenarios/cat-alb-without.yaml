@@ -1,0 +1,18 @@
+id: cat-alb-without
+description: |
+  Paired with cat-alb-with. Catalog entry for ALB removed.
+  Same prompt + same band. If the agent saves within band on
+  manifest+lint alone, the catalog entry is redundant; if it falls
+  outside the band, the entry earns its place.
+prompt: |
+  Add an Application Load Balancer to my estimate in us-east-1.
+catalog_mutations:
+  - op: removeEntry
+    service: applicationLoadBalancer
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 22.82
+    max_monthly_usd: 68.45
+  - predicate: max_tool_calls
+    n: 15

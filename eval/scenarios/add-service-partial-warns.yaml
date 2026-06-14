@@ -1,0 +1,53 @@
+id: add-service-partial-warns
+description: |
+  Pinned to Test 5 of the post-deploy validation 2026-06-03 (#125,
+  memory: validate-config-keys-vs-lint-gap). Pre-fix shape: agent
+  calls add_service with empty NAT config (just region/description),
+  receives success: true with no signal that anything's wrong, then
+  validate_estimate refuses on missing required fields and the
+  retry-then-pollute-the-store loop begins.
+
+  The fix: validateConfigKeys now computes a missingRequired list at
+  add_service entry time (catalog required[] + form-side
+  validations.required walk). add_service's per-entry response
+  carries partial: true + missing_required_fields[] + next_step (a
+  single hint naming all missing fields, same prose validate_estimate
+  emits). The entry IS still registered (success: true), so existing
+  flows work — the warning just reaches the agent before the next
+  tool call instead of after.
+
+  Scripted scenario rather than LLM-driven: capable agents (Sonnet
+  4.5+) tend to discover via get_service_fields and pick reasonable
+  defaults instead of saving an empty config, so an LLM scenario
+  rarely exercises the partial-warning path. The scripted form pins
+  the call shape and asserts the response carries the warning.
+calls:
+  - tool: create_estimate
+    args:
+      name: partial-warn-test
+  - tool: add_service
+    args:
+      estimate_id: ${estimate_id}
+      services: |
+        [{"service":"networkAddressTranslationNatGatewayVpc","group":"Networking","config":{
+          "region":"us-east-1",
+          "description":"NAT, no params"
+        }}]
+expectations:
+  # Per-entry response carries partial: true at index 0.
+  - predicate: response_field_present
+    tool: add_service
+    field_path: '0.partial'
+  # The warning lists at least one missing required field.
+  - predicate: response_field_present
+    tool: add_service
+    field_path: '0.missing_required_fields.0'
+  # And a hint for recovery.
+  - predicate: response_field_present
+    tool: add_service
+    field_path: '0.next_step'
+  # Entry IS registered (success: true preserved — recovery flow
+  # treats the entry as added, not rejected).
+  - predicate: response_field_present
+    tool: add_service
+    field_path: '0.success'

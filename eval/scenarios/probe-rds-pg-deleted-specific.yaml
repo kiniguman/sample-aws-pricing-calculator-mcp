@@ -1,0 +1,35 @@
+id: probe-rds-pg-deleted-specific
+prompt: |
+  Add an Amazon RDS for PostgreSQL database to my estimate.
+  us-east-1, single-AZ deployment, db.r6g.large instance,
+  100 GB of GP3 storage, on-demand pricing. Return the URL.
+description: |
+  FALSIFIER — tests H1 ("specific prompts → catalog adds little")
+  against the columnFormIPM shape bug class.
+
+  RDS PG's catalog has a columnFormIPM trap warning about wrapped
+  shape vs dotted-path keys. The dotted-path version saved cleanly
+  for ~2 weeks (commit 9f2e63f) before someone noticed silent-\$0.
+  This probe asks: with NO catalog, can the agent construct
+  columnFormIPM in the right wrapped shape from manifest data
+  alone?
+
+  Specific prompt names every config field. If the framing's H1
+  holds, the agent should produce a save matching the canonical
+  configuration → \$175.75/mo. If the columnFormIPM shape comes
+  out wrong (dotted-path keys, missing the `undefined` matrix
+  utilization, wrong wrapping), the save will render \$0 or
+  partial cost.
+
+  Cost reads:
+    - \$175.75 → catalog's shape trap was replaceable
+    - \$0 or way off → the trap text was load-bearing
+catalog_mutations:
+  - op: removeEntry
+    service: amazonRDSPostgreSQLDB
+expectations:
+  - predicate: trajectory_includes
+    sequence: [get_service_fields]
+    strict: false
+  - predicate: max_tool_calls
+    n: 20

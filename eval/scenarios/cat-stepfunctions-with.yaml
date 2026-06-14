@@ -1,0 +1,16 @@
+id: cat-stepfunctions-with
+description: |
+  Paired with cat-stepfunctions-without. Tests whether the Step Functions
+  catalog entry is earning its place. Catalog role:
+  Sub-service-selector parent (stepFunctionStandard / stepFunctionExpress). Frequency unit MUST be perHour/perDay/perMonth — millionPerMonth silently zeros pricing.
+
+  Canonical (verified estimate): ~$199.9/mo. Band ±50%.
+prompt: |
+  Add AWS Step Functions Standard Workflows to my estimate in us-east-1.
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 99.95
+    max_monthly_usd: 299.85
+  - predicate: max_tool_calls
+    n: 15

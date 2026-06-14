@@ -1,0 +1,28 @@
+id: cat-nat-with
+description: |
+  Paired with cat-nat-without. Tests whether the NAT Gateway catalog
+  entry is earning its place against a moderately-vague prompt that
+  doesn't specify the data-processed magnitude.
+
+  NAT's catalog has no `required[]` (every required field is form-side
+  validated.required: true, caught structurally by the lint without
+  catalog help). Its irreducible value is `minimalConfig` (Role A:
+  magnitude calibration — manifest defaults are 5 gateways × 3 AZs
+  which would over-estimate ~5x for a "hello world" workload) and a
+  `traps[]` entry warning agents away from the legacy non-regional
+  field set.
+
+  This scenario uses the catalog as-is. Asserts the agent picks
+  reasonable magnitudes and saves an editable, priced estimate.
+prompt: |
+  Add a NAT Gateway to my estimate in us-east-1.
+expectations:
+  - predicate: save_succeeded
+  # Canonical NAT minimalConfig (1 gateway × 1 AZ × 1 GB) ≈ $32.89/mo.
+  # Band ±50%. cat-nat-without sees ~$72/mo (manifest defaults are
+  # 5×3) and should fail the ceiling.
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 15.0
+    max_monthly_usd: 50.0
+  - predicate: max_tool_calls
+    n: 10

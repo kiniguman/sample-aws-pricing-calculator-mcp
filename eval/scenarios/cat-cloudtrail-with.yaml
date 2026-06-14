@@ -1,0 +1,16 @@
+id: cat-cloudtrail-with
+description: |
+  Paired with cat-cloudtrail-without. Tests whether the CloudTrail
+  catalog entry is earning its place. Catalog role:
+  *Mult dropdown fields whose option ids ARE the multiplier numbers (1000000 = millions); first management trail is free; numberOfWriteEvents vs numberOfWMEvents distinction.
+
+  Canonical (verified estimate): ~$10/mo. Band ±50%.
+prompt: |
+  Add AWS CloudTrail to my estimate in us-east-1.
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 5
+    max_monthly_usd: 15
+  - predicate: max_tool_calls
+    n: 15

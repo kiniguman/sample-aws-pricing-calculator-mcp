@@ -1,0 +1,49 @@
+id: lambda-minimal
+description: |
+  Single AWS Lambda at 200M requests/month — well above the 1M/month
+  free tier. Touches manifest fetch, validation, save, and lint, AND
+  encodes today's hard-won lesson: PCT-required (numberOfRequests +
+  durationOfEachRequest) is NOT enough. The pricing engine reads
+  sizeOfMemoryAllocated, storageAmountEphemeral, the architecture
+  toggles, and the invoke-mode field; without them, saves rehydrate
+  with $0 cost even though lint passes and the round-trip succeeds.
+  This config mirrors the calculator UI's full emit set.
+calls:
+  - tool: create_estimate
+    args:
+      name: eval-lambda-200m-req
+  - tool: add_service
+    args:
+      estimate_id: ${estimate_id}
+      services: |
+        [{"service":"aWSLambda","group":"Compute","config":{
+          "region":"us-east-1",
+          "description":"eval lambda 200M req/mo",
+          "numberOfRequests":{"value":"200","unit":"millionPerMonth"},
+          "durationOfEachRequest":"200",
+          "sizeOfMemoryAllocated":{"value":"1","unit":"gb|NA"},
+          "storageAmountEphemeral":{"value":"512","unit":"mb|NA"},
+          "selectArchitectureRequests":"1",
+          "selectArchitectureConcurrency":"1",
+          "lambdaFunctionIncludeFreeTier_lambdaInvokeMode":"0"
+        }}]
+  - tool: validate_estimate
+    args:
+      estimate_id: ${estimate_id}
+  - tool: export_estimate
+    args:
+      estimate_id: ${estimate_id}
+expectations:
+  - predicate: save_succeeded
+  - predicate: no_tool_errors
+  - predicate: lint_verdict
+    expected: editable
+  - predicate: trajectory_includes
+    sequence: [create_estimate, add_service, validate_estimate, export_estimate]
+    strict: true
+  # Closes the silent-zero-cost gap. 200M req/mo on Lambda Lite with
+  # the full UI-emit field set should price in the tens of dollars.
+  # Floor of $1/mo means even partial pricing failures (e.g. only
+  # request-cost path computing, not GB-second) would fail this.
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 1.0

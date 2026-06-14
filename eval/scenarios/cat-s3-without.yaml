@@ -1,0 +1,18 @@
+id: cat-s3-without
+description: |
+  Paired with cat-s3-with. Catalog entry for S3 Standard removed.
+  Same prompt + same band. If the agent saves within band on
+  manifest+lint alone, the catalog entry is redundant; if it falls
+  outside the band, the entry earns its place.
+prompt: |
+  Add Amazon S3 Standard storage to my estimate in us-east-1.
+catalog_mutations:
+  - op: removeEntry
+    service: amazonSimpleStorageServiceGroup
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 5.75
+    max_monthly_usd: 17.25
+  - predicate: max_tool_calls
+    n: 15

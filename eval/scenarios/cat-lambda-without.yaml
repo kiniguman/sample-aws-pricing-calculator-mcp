@@ -1,0 +1,38 @@
+id: cat-lambda-without
+description: |
+  Paired with cat-lambda-with. Same prompt, but Lambda's catalog
+  entry is removed entirely.
+
+  Decision rule:
+    - both pass → catalog entry redundant, delete from production
+    - with passes, without fails → entry earns its place. The
+      failure mode names which role is load-bearing.
+    - both fail → broken regardless
+
+  Lambda is the canonical "catalog earns its place" case. Its two
+  required[] entries are residuals no derivation rule catches. With
+  the catalog removed, an agent that forgets architecture saves
+  cleanly through the lint AND the calculator silently prices $0.
+  estimate_renders_cost should fail.
+
+  If this scenario passes (agent supplied architecture without
+  catalog hints), Lambda's catalog might also be droppable.
+prompt: |
+  Add an AWS Lambda function to my estimate in us-east-1.
+catalog_mutations:
+  - op: removeEntry
+    service: aWSLambda
+expectations:
+  - predicate: save_succeeded
+  # Same band as cat-lambda-with: [$200, $500]. The catalog is the
+  # only structural defense against the silent-$0 trap (architecture
+  # dropdowns drive rate-table selection, not math operands). Without
+  # it, the agent typically omits architecture, the pricing engine
+  # zeros the request-cost path, and the rendered cost lands at
+  # ~$34/mo (10× under). Failure is expected and confirms the entry
+  # earns its place.
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 200.0
+    max_monthly_usd: 500.0
+  - predicate: max_tool_calls
+    n: 10

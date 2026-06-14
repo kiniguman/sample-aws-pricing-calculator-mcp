@@ -1,0 +1,40 @@
+id: cat-ec2-defaultfields-without
+description: |
+  Paired with cat-ec2-defaultfields-with. The mutation strips
+  defaultFields from the EC2 catalog entry. The rest stays intact —
+  this isolates defaultFields as the variable.
+
+  Without defaultFields, the agent must supply dataTransferForEC2
+  themselves. The field is invisible in get_service_fields because
+  manifest validations.required is false for this field; so unless the
+  agent reads the catalog traps[] line that mentions it (or guesses),
+  the saved blob omits it. The calculator's behaviour with the field
+  absent: silently demands the structure on render, which historically
+  manifested as a "Required-input" verdict on the saved estimate.
+
+  Decision rule (paired audit, see cat-ec2-defaultfields-with). With
+  defaultFields the structural assertion passes; without, it should
+  fail (or the agent saves a bare blob and the saved_blob_field_equals
+  fails because the path is absent).
+prompt: |
+  Add an EC2 m5.large in us-east-1.
+catalog_mutations:
+  - op: remove
+    service: ec2Enhancement
+    path: /defaultFields
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 35.04
+    max_monthly_usd: 105.12
+  # Without defaultFields, the saved blob's dataTransferForEC2 path is
+  # likely absent. This predicate fails, which is the EXPECTED outcome
+  # for the without-scenario in a paired audit (the with-scenario
+  # passes; the without-scenario fails).
+  - predicate: saved_blob_field_equals
+    paths:
+      - services.*.calculationComponents.dataTransferForEC2.value.0.entryType
+      - groups.*.services.*.calculationComponents.dataTransferForEC2.value.0.entryType
+    equals: INBOUND
+  - predicate: max_tool_calls
+    n: 10

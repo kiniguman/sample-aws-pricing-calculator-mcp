@@ -1,0 +1,50 @@
+id: transit-gateway-minimal
+description: |
+  AWS Transit Gateway at the catalog's verified minimalConfig — 1
+  attachment, 100 GB/mo ingress. Verified 2026-05-30.
+
+  TGW is a sub-service of amazonVirtualPrivateCloud (manifest
+  subType: 'subService'). EstimateBuilder automatically wraps it
+  in the VPC parent envelope at save time. Same pattern as
+  networkAddressTranslationNatGatewayVpc and the other VPC
+  children — agents call add_service with the child code, not
+  the parent.
+
+  Pricing: $0.05/attachment-hour (always-on while provisioned)
+  + $0.02/GB ingress data processed. At 1 attachment + 100 GB/mo
+  this prices ~$38.50/mo (730 × $0.05 = $36.50 base, plus 100 ×
+  $0.02 = $2 data).
+calls:
+  - tool: create_estimate
+    args:
+      name: eval-transit-gateway-minimal
+  - tool: add_service
+    args:
+      estimate_id: ${estimate_id}
+      services: |
+        [{"service":"transitGatewayVpc","group":"Network","config":{
+          "region":"us-east-1",
+          "description":"1 TGW attachment, 100 GB/mo ingress",
+          "numberOfTransitGatewayAttachments":"1",
+          "dataProcessedPerTransitGatewayAttachment":{"value":"100","unit":"gb|month"}
+        }}]
+  - tool: validate_estimate
+    args:
+      estimate_id: ${estimate_id}
+  - tool: export_estimate
+    args:
+      estimate_id: ${estimate_id}
+expectations:
+  - predicate: save_succeeded
+  - predicate: no_tool_errors
+  - predicate: lint_verdict
+    expected: editable
+  - predicate: trajectory_includes
+    sequence: [create_estimate, add_service, validate_estimate, export_estimate]
+    strict: true
+  # Floor of $20 catches the silent-$0 regression class (where
+  # the sub-service envelope wrap fails, the attachment count
+  # gets dropped, or pricing falls to data-only with no per-hour
+  # base).
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 20.0

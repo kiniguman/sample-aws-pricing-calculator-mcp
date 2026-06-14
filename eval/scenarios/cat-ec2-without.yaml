@@ -1,0 +1,18 @@
+id: cat-ec2-without
+description: |
+  Paired with cat-ec2-with. Catalog entry for EC2 removed.
+  Same prompt + same band. If the agent saves within band on
+  manifest+lint alone, the catalog entry is redundant; if it falls
+  outside the band, the entry earns its place.
+prompt: |
+  Add an EC2 instance to my estimate in us-east-1.
+catalog_mutations:
+  - op: removeEntry
+    service: ec2Enhancement
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 35.04
+    max_monthly_usd: 105.12
+  - predicate: max_tool_calls
+    n: 15

@@ -1,0 +1,31 @@
+id: probe-lambda-deleted-specific
+prompt: |
+  Add an AWS Lambda function to my estimate.
+  100 million requests per month, 200 ms average duration,
+  1 GB memory, 512 MB ephemeral storage, x86 architecture,
+  buffered invoke mode. us-east-1. Return the URL.
+description: |
+  FALSIFIER — tests whether Lambda's 10× underestimate
+  (probe-lambda-deleted) was about prompt specificity, not about
+  catalog being load-bearing.
+
+  Same service, same model, no catalog — only the prompt changes.
+  Probe-lambda-deleted gave only request count → \$33.97.
+  Canonical for the same workload at canonical config: \$346.47.
+
+  This probe gives ALL canonical config values explicitly. If the
+  framing's H1 holds, the agent should ship a save matching
+  canonical → \$346.47/mo.
+
+  If the cost still drifts low, the catalog was doing more than
+  magnitude calibration — it was doing something agents can't
+  reconstruct from prompt + manifest.
+catalog_mutations:
+  - op: removeEntry
+    service: aWSLambda
+expectations:
+  - predicate: trajectory_includes
+    sequence: [get_service_fields]
+    strict: false
+  - predicate: max_tool_calls
+    n: 20

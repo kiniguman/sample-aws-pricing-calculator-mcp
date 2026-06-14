@@ -1,0 +1,31 @@
+id: probe-nat-deleted
+prompt: |
+  Add a NAT gateway to my AWS estimate. us-east-1, single AZ.
+  Return the shareable URL.
+description: |
+  DAMAGE PROBE — observational, not regression.
+
+  Removes the NAT gateway catalog entry. Same prompt class as
+  production estimate B (which had a populated catalog and still
+  failed) — moderately underspecified: gives region and AZ count,
+  doesn't specify data processed.
+
+  Canonical reference at the catalog's minimalConfig (1 GB/mo
+  data-processed): \$37.35/mo.
+
+  Asks: with no catalog at all, does the agent ship an estimate
+  that prices reasonably (within 0.5-2x of canonical), or does
+  it omit the data-processed field and end up at the silent-default?
+  This was production B's failure mode, even WITH a catalog —
+  so a deleted-catalog version may not be diagnostic if the
+  policy refusal also fires here. Worth running as a paired
+  comparison anyway.
+catalog_mutations:
+  - op: removeEntry
+    service: networkAddressTranslationNatGatewayVpc
+expectations:
+  - predicate: trajectory_includes
+    sequence: [get_service_fields]
+    strict: false
+  - predicate: max_tool_calls
+    n: 20

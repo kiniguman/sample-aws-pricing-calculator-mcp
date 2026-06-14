@@ -1,0 +1,30 @@
+id: probe-fargate-deleted
+prompt: |
+  Add an AWS Fargate workload to my estimate. 10 tasks per day,
+  60 minutes each, 1 vCPU, 16 GB memory. us-east-1. Return the URL.
+description: |
+  DAMAGE PROBE — observational, not regression.
+
+  Removes the Fargate catalog entry entirely. Same prompt as
+  probe-fargate-wrong-trap, so behavior diff is the catalog content.
+
+  Hypothesis: with NO catalog at all, the agent has only the
+  manifest's field metadata to work with. The manifest's displayIf
+  rules ARE in the field metadata returned by get_service_fields
+  (in field.displayIf if the agent reads it). If the agent reads
+  field metadata carefully, it picks memoryStandardFargateOnDemand
+  for vcpuPerTask=1 — the right answer.
+
+  This is the strongest test of "is the catalog actually helping?"
+  If a deleted-catalog agent does AS WELL AS or BETTER than a
+  wrong-trap-catalog agent, then bad catalog content is a NET
+  NEGATIVE — worse than no catalog.
+catalog_mutations:
+  - op: removeEntry
+    service: awsFargate
+expectations:
+  - predicate: trajectory_includes
+    sequence: [get_service_fields]
+    strict: false
+  - predicate: max_tool_calls
+    n: 20

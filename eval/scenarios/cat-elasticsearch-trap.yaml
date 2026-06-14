@@ -1,0 +1,35 @@
+id: cat-elasticsearch-trap
+description: |
+  Pinned to the production case 2026-06-03 (estimate a6738f91...).
+  User asked "create an opensearch calculator", agent saved 3 m6g.large
+  data nodes via columnFormIPM_1 only. Calculator silently auto-defaulted
+  columnFormIPM_2 (3× r5.2xlarge.search master) + columnFormIPM (2×
+  UltraWarm) and rendered $2394/mo for what should have been a $280/mo
+  cluster. 8.5× phantom cost; lint missed it.
+
+  The new column-form-default-trap predicate (2026-06-03) refuses the
+  save until the agent explicitly populates the absent tables. This
+  scenario validates two things at once:
+    (a) the agent recovers from the lint refusal by zeroing out master
+        + UltraWarm,
+    (b) the resulting saved blob renders within a *tight* cost band
+        matching the user's actual ask.
+
+  If (a) fails, the lint hint isn't actionable enough.
+  If (b) fails (cost too high), the recovery missed one of the tables.
+  If (b) fails (cost too low), the agent zeroed the data nodes too.
+prompt: |
+  Create an OpenSearch estimate. 3 m6g.large data nodes in us-east-1,
+  100 GB GP3 storage per node. No dedicated master nodes, no UltraWarm.
+expectations:
+  - predicate: save_succeeded
+  # 3 m6g.large.search (us-east-1, 100% util) ≈ $307/mo OnDemand.
+  # Plus EBS GP3 100GB × 3 nodes ≈ $24/mo. Target ~$280-$340/mo for
+  # the data-only cluster. Band [$200, $500] keeps room for instance
+  # mix and provisioning IOPS variance, but excludes both the
+  # phantom-cost case ($2394) and the agent-zeroed-everything case ($0).
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 200.0
+    max_monthly_usd: 500.0
+  - predicate: max_tool_calls
+    n: 20

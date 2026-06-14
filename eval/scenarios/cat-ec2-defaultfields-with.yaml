@@ -1,0 +1,33 @@
+id: cat-ec2-defaultfields-with
+description: |
+  Paired with cat-ec2-defaultfields-without. Tests the catalog's
+  defaultFields primitive: when an agent saves EC2 without an explicit
+  dataTransferForEC2 envelope, lib/handler-helpers.js#applyDefaultFields
+  injects the canonical 3-row INBOUND/OUTBOUND/INTRA_REGION shape from
+  the catalog entry's defaultFields block. Pre-fix this lived as
+  EMPTY_DATA_TRANSFER inside lib/ec2.js (EC2-special-case); post-fix
+  it's a general primitive any service can use.
+
+  This scenario uses the catalog as-is (with the defaultFields block).
+  Asserts the saved blob carries the dataTransferForEC2 envelope at
+  the structural shape the calculator expects.
+prompt: |
+  Add an EC2 m5.large in us-east-1.
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 35.04
+    max_monthly_usd: 105.12
+  # Structural assertion: the saved blob has dataTransferForEC2 with
+  # the canonical envelope. Without defaultFields the agent doesn't
+  # supply it (the field doesn't appear in get_service_fields and the
+  # lint doesn't refuse without it), and the calculator silently
+  # complains about the missing field. With defaultFields the catalog
+  # injects it.
+  - predicate: saved_blob_field_equals
+    paths:
+      - services.*.calculationComponents.dataTransferForEC2.value.0.entryType
+      - groups.*.services.*.calculationComponents.dataTransferForEC2.value.0.entryType
+    equals: INBOUND
+  - predicate: max_tool_calls
+    n: 10

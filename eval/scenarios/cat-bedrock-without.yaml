@@ -1,0 +1,35 @@
+id: cat-bedrock-without
+description: |
+  Paired with cat-bedrock-with. Bedrock catalog removed.
+
+  Decision rule:
+    - both pass → catalog entry redundant
+    - with passes, without fails → entry earns its place. The
+      failure mode pinpoints which role is load-bearing
+      (sub-service redirect, model-id agreement, suffix-family
+      navigation).
+    - both fail → broken regardless
+
+  Without the redirect hint and traps, the agent has to discover
+  the multi-provider structure from scratch via get_service_fields
+  on amazonBedrock (which returns no input fields — it's a parent
+  envelope). The lint's parent-envelope hint message is what
+  reads catalog subServices[] to suggest concrete child codes.
+  If this scenario fails, that's the role earning its place.
+prompt: |
+  Add Anthropic Claude Sonnet 4 on Amazon Bedrock to my estimate in us-east-1.
+catalog_mutations:
+  - op: removeEntry
+    service: amazonBedrock
+expectations:
+  - predicate: save_succeeded
+  # Same band as cat-bedrock-with: [$3000, $9000]. Without the
+  # parent-envelope redirect hint and the multi-provider traps,
+  # the agent struggles to reach a concrete child code (e.g.
+  # `anthropic`) — typical observed cost is $0/mo (saved but
+  # mis-configured), failing the floor.
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 3000.0
+    max_monthly_usd: 9000.0
+  - predicate: max_tool_calls
+    n: 15

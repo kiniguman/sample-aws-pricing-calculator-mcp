@@ -1,0 +1,16 @@
+id: cat-rds-pg-with
+description: |
+  Paired with cat-rds-pg-without. Tests whether the RDS PostgreSQL
+  catalog entry is earning its place. Catalog role:
+  columnFormIPM matrix shape (instance × util × deployment × term) — agents typically can't reconstruct the wrapped value: [{Number of Nodes:..., Instance Type:..., Deployment Option:..., TermType:..., undefined: {value: {unit, selectedId}}}] shape from manifest alone.
+
+  Canonical (verified estimate): ~$175.75/mo. Band ±50%.
+prompt: |
+  Add a PostgreSQL RDS database to my estimate in us-east-1.
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 87.88
+    max_monthly_usd: 263.63
+  - predicate: max_tool_calls
+    n: 15

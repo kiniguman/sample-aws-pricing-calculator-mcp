@@ -1,0 +1,18 @@
+id: cat-cognito-without
+description: |
+  Paired with cat-cognito-with. Catalog entry for Cognito Essentials removed.
+  Same prompt + same band. If the agent saves within band on
+  manifest+lint alone, the catalog entry is redundant; if it falls
+  outside the band, the entry earns its place.
+prompt: |
+  Add Amazon Cognito Essentials to my estimate in us-east-1.
+catalog_mutations:
+  - op: removeEntry
+    service: amazonCognito
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 300
+    max_monthly_usd: 900
+  - predicate: max_tool_calls
+    n: 15

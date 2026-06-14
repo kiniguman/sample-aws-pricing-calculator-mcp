@@ -1,0 +1,46 @@
+id: fargate-minimal
+description: |
+  AWS Fargate at the catalog's verified minimalConfig (1 task/sec
+  with 1-min duration, 0.25 vCPU + 0.5 GB smallMemory). Architecture
+  defaults to x86; OS defaults to Linux.
+
+  Memory is split across four vCPU-tiered PCT fields. The matching
+  variant is required — without it, the GB-second cost component
+  silently zeros (~18% under-estimate). The new oneOf-mutex predicate
+  catches this from the manifest's addition expression that sums all
+  four memory variants gated by vcpuPerTask.
+calls:
+  - tool: create_estimate
+    args:
+      name: eval-fargate-minimal
+  - tool: add_service
+    args:
+      estimate_id: ${estimate_id}
+      services: |
+        [{"service":"awsFargate","group":"Compute","config":{
+          "region":"us-east-1",
+          "description":"Fargate workload",
+          "numberOfTasks":{"value":"1","unit":"perSecond"},
+          "taskDuration":{"value":"1","unit":"min"},
+          "vcpuPerTask":"0.25",
+          "smallMemory":"0.5"
+        }}]
+  - tool: validate_estimate
+    args:
+      estimate_id: ${estimate_id}
+  - tool: export_estimate
+    args:
+      estimate_id: ${estimate_id}
+expectations:
+  - predicate: save_succeeded
+  - predicate: no_tool_errors
+  - predicate: lint_verdict
+    expected: editable
+  - predicate: trajectory_includes
+    sequence: [create_estimate, add_service, validate_estimate, export_estimate]
+    strict: true
+  # Fargate at this volume prices ~$530/mo. Floor of $100 catches
+  # any silent-tier-mis-routing or missing-required-field
+  # regression while leaving headroom for PCT pricing tweaks.
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 100.0

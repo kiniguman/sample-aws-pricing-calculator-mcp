@@ -1,0 +1,16 @@
+id: cat-alb-with
+description: |
+  Paired with cat-alb-without. Tests whether the ALB
+  catalog entry is earning its place. Catalog role:
+  LCU-driver fields — calculator demands at least one (numberOfApplicationLoadBalancers + a data/connection driver) or it shows "Please specify value for at least one of the fields."
+
+  Canonical (verified estimate): ~$45.63/mo. Band ±50%.
+prompt: |
+  Add an Application Load Balancer to my estimate in us-east-1.
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 22.82
+    max_monthly_usd: 68.45
+  - predicate: max_tool_calls
+    n: 15

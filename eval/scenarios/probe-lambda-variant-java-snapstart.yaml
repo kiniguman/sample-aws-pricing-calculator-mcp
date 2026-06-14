@@ -1,0 +1,29 @@
+id: probe-lambda-variant-java-snapstart
+prompt: |
+  Add a Lambda function for our Spring Boot Java service.
+  10 million requests per month, us-east-1, 1 GB memory,
+  200ms duration. Return the URL.
+description: |
+  VARIANT-SELECTION PROBE — observational.
+
+  Tests whether the agent picks SnapStart for a Java workload.
+  No catalog entry. The "Spring Boot Java" framing is the variant
+  signal; otherwise the magnitudes are explicit (rules out
+  magnitude drift as a confounder).
+
+  Outcomes:
+    A) Saves only standard fields (memory/duration/architecture/
+       requests). Agent ignores the Java signal.
+    B) Saves with timeForSnapStart / numberColdStarts /
+       memoryAllocatedForSnapStart populated. Agent recognizes
+       Java→SnapStart pricing relevance.
+    C) Mixed.
+catalog_mutations:
+  - op: removeEntry
+    service: aWSLambda
+expectations:
+  - predicate: trajectory_includes
+    sequence: [get_service_fields]
+    strict: false
+  - predicate: max_tool_calls
+    n: 20

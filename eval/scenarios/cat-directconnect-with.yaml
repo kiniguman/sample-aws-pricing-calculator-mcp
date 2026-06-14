@@ -1,0 +1,16 @@
+id: cat-directconnect-with
+description: |
+  Paired with cat-directconnect-without. Tests whether the Direct Connect
+  catalog entry is earning its place. Catalog role:
+  columnFormIPM with namespaced port: selectors and a separate utilization field (NOT the embedded "undefined" slot RDS uses).
+
+  Canonical (verified estimate): ~$219/mo. Band ±50%.
+prompt: |
+  Add AWS Direct Connect to my estimate in us-east-1.
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 109.5
+    max_monthly_usd: 328.5
+  - predicate: max_tool_calls
+    n: 15

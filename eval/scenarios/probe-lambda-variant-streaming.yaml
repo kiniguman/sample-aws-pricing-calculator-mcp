@@ -1,0 +1,30 @@
+id: probe-lambda-variant-streaming
+prompt: |
+  Add a Lambda function that proxies streaming responses from an
+  LLM. 1 million invocations per month, average response is 50KB
+  streamed over 30 seconds, us-east-1. Return the URL.
+description: |
+  VARIANT-SELECTION PROBE — observational.
+
+  Tests whether the agent picks Response Streaming for a prompt
+  that explicitly says "streaming." No catalog entry. This is the
+  most explicit variant signal of the three probes; if the agent
+  fails this one, it would never adopt non-canonical variants from
+  prompt context.
+
+  Outcomes:
+    A) Saves only standard fields. Agent treats "streaming" as
+       descriptive prose, not a feature signal.
+    B) Saves with lambdaFunctionIncludeFreeTier_responseStreamingData /
+       numberofInvokes populated. Agent recognizes streaming as
+       a Lambda feature with separate pricing.
+    C) Mixed.
+catalog_mutations:
+  - op: removeEntry
+    service: aWSLambda
+expectations:
+  - predicate: trajectory_includes
+    sequence: [get_service_fields]
+    strict: false
+  - predicate: max_tool_calls
+    n: 20

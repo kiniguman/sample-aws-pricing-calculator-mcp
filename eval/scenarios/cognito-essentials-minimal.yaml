@@ -1,0 +1,45 @@
+id: cognito-essentials-minimal
+description: |
+  Cognito Essentials tier at 50K MAU + 250K token requests — well
+  above Lite's 10K-MAU free tier. Tests that the templateIdHint
+  mechanism (4146e2e) routes the save through CognitoEssentials
+  instead of letting field-membership scoring's tie-break pick Lite.
+  This is the canonical multi-template service: PCT exposes three
+  tiers (Cognito Lite, CognitoEssentials, CognitoPlus); the catalog
+  pins templateId to CognitoEssentials and the builder honors it.
+calls:
+  - tool: create_estimate
+    args:
+      name: eval-cognito-essentials-50k
+  - tool: add_service
+    args:
+      estimate_id: ${estimate_id}
+      services: |
+        [{"service":"amazonCognito","group":"Auth","config":{
+          "region":"us-east-1",
+          "description":"Essentials tier 50K MAU",
+          "cognito_NumberOfMAUs_Essential":"50000",
+          "cognitoEssentials_userTokenRequests":"250000",
+          "optimizationRateTokenRequests":"0",
+          "optimizationRateAppClients":"0"
+        }}]
+  - tool: validate_estimate
+    args:
+      estimate_id: ${estimate_id}
+  - tool: export_estimate
+    args:
+      estimate_id: ${estimate_id}
+expectations:
+  - predicate: save_succeeded
+  - predicate: no_tool_errors
+  - predicate: lint_verdict
+    expected: editable
+  - predicate: trajectory_includes
+    sequence: [create_estimate, add_service, validate_estimate, export_estimate]
+    strict: true
+  # Closes the silent-zero-cost gap. 50K MAU on Essentials should
+  # price ≥ ~$300/mo. Floor of $50 catches any tier mis-routing
+  # (Lite would price free; Plus would price higher) without being
+  # so brittle that catalog evolution breaks the test.
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 50.0

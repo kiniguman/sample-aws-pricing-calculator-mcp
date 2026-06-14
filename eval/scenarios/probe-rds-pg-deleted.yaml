@@ -1,0 +1,38 @@
+id: probe-rds-pg-deleted
+prompt: |
+  Add an Amazon RDS for PostgreSQL database to my estimate.
+  us-east-1, suitable for a moderate-sized production workload.
+  Return the shareable URL.
+description: |
+  DAMAGE PROBE — observational.
+
+  Removes the RDS PostgreSQL catalog entry. RDS PG is the
+  highest-stakes test in this series for two reasons:
+
+    1. Its minimalConfig uses columnFormIPM, the most complex
+       value shape in the catalog. Authored wrong (dotted-path
+       keys) it shipped a silent-\$0 bug for ~2 weeks (commit
+       9f2e63f). Without the catalog, can the agent even get
+       the shape right?
+
+    2. Workload size is genuinely ambiguous in the prompt
+       ("moderate-sized production"). The canonical catalog
+       picks db.r6g.large + 100 GB GP3 = \$175.75/mo. Without
+       that anchor, the agent might pick a tiny instance type
+       or a huge one — wide variance possible.
+
+  Canonical reference: \$175.75/mo.
+
+  Reads as: the strongest argument that calibrated example
+  values are load-bearing, OR the strongest counterargument
+  if a capable model picks something reasonable from training
+  prior.
+catalog_mutations:
+  - op: removeEntry
+    service: amazonRDSPostgreSQLDB
+expectations:
+  - predicate: trajectory_includes
+    sequence: [get_service_fields]
+    strict: false
+  - predicate: max_tool_calls
+    n: 20

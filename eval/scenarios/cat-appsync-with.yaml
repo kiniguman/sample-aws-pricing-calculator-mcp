@@ -1,0 +1,16 @@
+id: cat-appsync-with
+description: |
+  Paired with cat-appsync-without. Tests whether the AppSync
+  catalog entry is earning its place. Catalog role:
+  Sub-service-selector parent (appSyncApiCall / appSyncCaching / etc). Verified estimate id renders $0, no canonical baseline available.
+
+  Canonical (verified estimate): ~$0/mo. Band ±50%.
+prompt: |
+  Add AWS AppSync to my estimate in us-east-1.
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 0.5
+    max_monthly_usd: 50
+  - predicate: max_tool_calls
+    n: 15

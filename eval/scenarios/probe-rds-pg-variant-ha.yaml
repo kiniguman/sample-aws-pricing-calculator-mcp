@@ -1,0 +1,33 @@
+id: probe-rds-pg-variant-ha
+prompt: |
+  Add an Amazon RDS for PostgreSQL database to my estimate.
+  us-east-1, db.r6g.large instance, 100 GB GP3 storage. This is
+  the primary database for a critical production workload that
+  needs to survive AZ outages. Return the URL.
+description: |
+  VARIANT-SELECTION PROBE — RDS PG, Multi-AZ vs Single-AZ.
+
+  Tests whether the agent picks Multi-AZ for a prompt that signals
+  AZ-outage survival ("survive AZ outages", "critical production").
+  No catalog entry — agent works from manifest fields only.
+
+  Multi-AZ doubles the cost (replica instance + replicated storage).
+  Canonical Single-AZ at this config: \$175.75/mo. Multi-AZ
+  expectation: ~\$350/mo.
+
+  Outcomes:
+    A) Saves with Deployment Option = "Single-AZ" → variant signal
+       missed.
+    B) Saves with Deployment Option = "Multi-AZ" or "Multi-AZ
+       (readable standbys)" → variant signal recognized.
+    C) Reasoning explicitly names HA / failover but picks the
+       wrong deployment option.
+catalog_mutations:
+  - op: removeEntry
+    service: amazonRDSPostgreSQLDB
+expectations:
+  - predicate: trajectory_includes
+    sequence: [get_service_fields]
+    strict: false
+  - predicate: max_tool_calls
+    n: 20

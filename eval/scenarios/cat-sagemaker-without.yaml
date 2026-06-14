@@ -1,0 +1,18 @@
+id: cat-sagemaker-without
+description: |
+  Paired with cat-sagemaker-with. Catalog entry for SageMaker removed.
+  Same prompt + same band. If the agent saves within band on
+  manifest+lint alone, the catalog entry is redundant; if it falls
+  outside the band, the entry earns its place.
+prompt: |
+  Add Amazon SageMaker Studio Notebooks to my estimate in us-east-1.
+catalog_mutations:
+  - op: removeEntry
+    service: amazonSageMaker
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 45.4
+    max_monthly_usd: 136.2
+  - predicate: max_tool_calls
+    n: 15

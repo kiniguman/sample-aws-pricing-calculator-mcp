@@ -1,0 +1,18 @@
+id: cat-appsync-without
+description: |
+  Paired with cat-appsync-with. Catalog entry for AppSync removed.
+  Same prompt + same band. If the agent saves within band on
+  manifest+lint alone, the catalog entry is redundant; if it falls
+  outside the band, the entry earns its place.
+prompt: |
+  Add AWS AppSync to my estimate in us-east-1.
+catalog_mutations:
+  - op: removeEntry
+    service: awsAppSync
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 0.5
+    max_monthly_usd: 50
+  - predicate: max_tool_calls
+    n: 15

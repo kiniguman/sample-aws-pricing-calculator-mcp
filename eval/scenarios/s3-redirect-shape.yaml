@@ -1,0 +1,42 @@
+id: s3-redirect-shape
+description: |
+  Direct stdio call: get_service_fields("amazonS3") should redirect
+  rather than return synthetic-slot field IDs. amazonS3's PCT exposes
+  s3Services_generated_0..3 — slot markers, not real fields. Production
+  agents calling add_service with bare amazonS3 land in a saved
+  estimate that renders Read-only or $0; this scenario locks in the
+  redirect-envelope contract that gets them to amazonS3Standard
+  instead. Asserts the response shape, not agent behavior — for the
+  end-to-end behavior assertion see llm-s3-naming.
+calls:
+  - tool: get_service_fields
+    args:
+      service: amazonS3
+expectations:
+  - predicate: no_tool_errors
+  # Status field marks this as a redirect, not a normal field list.
+  # Existing build_estimate needs_field_grounding redirects use the
+  # same `status` shape, so agents already know to read it.
+  - predicate: response_field_present
+    tool: get_service_fields
+    field_path: status
+  - predicate: response_field_present
+    tool: get_service_fields
+    field_path: redirect_to
+  # The list of valid child codes the agent should call instead.
+  - predicate: response_field_present
+    tool: get_service_fields
+    field_path: child_service_codes.0
+  - predicate: response_field_present
+    tool: get_service_fields
+    field_path: next_step
+  # Preview-fetch optimization: the redirect envelope inlines the first
+  # child's fields so the agent doesn't need a second round trip in the
+  # unambiguous case. Multi-child parents still get the choice (preview
+  # is "here's the most likely one, switch if needed").
+  - predicate: response_field_present
+    tool: get_service_fields
+    field_path: preview_fields_for.serviceCode
+  - predicate: response_field_present
+    tool: get_service_fields
+    field_path: preview_fields_for.fields.0

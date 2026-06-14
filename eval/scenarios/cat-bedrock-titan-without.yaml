@@ -1,0 +1,28 @@
+id: cat-bedrock-titan-without
+description: |
+  Paired with cat-bedrock-titan-with. The mutation strips
+  productCodes[] from amazonBedrock.subServices[1] (the amazon
+  provider entry). The catalog otherwise stays intact — this is
+  NOT a remove-the-catalog test; it isolates productCodes[] as
+  the variable.
+
+  Without productCodes[], titanTextEmbeddingsV2 falls into the
+  generic flattened-sub-service hint that says "use parent:child
+  like amazonS3:Standard" — no concrete redirect. Agent has to
+  guess that "amazon" is the right provider code, possibly via
+  search_services or by reading amazonBedrock's traps[].
+
+  Decision rule (paired audit, see cat-bedrock-titan-with).
+prompt: |
+  Add Amazon Titan Text Embeddings V2 to my estimate in us-east-1.
+catalog_mutations:
+  - op: remove
+    service: amazonBedrock
+    path: /subServices/1/productCodes
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 0.5
+    max_monthly_usd: 200.0
+  - predicate: max_tool_calls
+    n: 15

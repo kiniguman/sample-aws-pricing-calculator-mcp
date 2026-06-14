@@ -1,0 +1,32 @@
+id: cat-bedrock-with
+description: |
+  Paired with cat-bedrock-without. Bedrock's catalog has no
+  required[] (the parent envelope shape doesn't need it) but
+  carries 11 traps[] entries documenting empirical behavior the
+  manifest doesn't structurally express:
+    - the multi-provider redirect (anthropic/amazon/meta/etc)
+    - opaque-sha model IDs and the three-dropdown-must-agree rule
+    - the location/tierIR suffix family system
+    - prompt-caching opt-in semantics
+    - the workload1 catch-all child
+
+  subServices[] is consumed by lint-hints to redirect agents
+  calling the parent code (amazonBedrock) to a concrete child
+  (anthropic).
+
+  This scenario uses the catalog as-is. The prompt addresses
+  Bedrock generically — agent has to navigate to a specific
+  provider. Asserts a priced save.
+prompt: |
+  Add Anthropic Claude Sonnet 4 on Amazon Bedrock to my estimate in us-east-1.
+expectations:
+  - predicate: save_succeeded
+  # Canonical Bedrock at 10 req/min × 8 hr/day × 30 days × 5K input
+  # + 2K output tokens, Claude Sonnet 4 ≈ $6480/mo. Band [$3000, $9000].
+  # cat-bedrock-without typically hits $0 (parent-envelope navigation
+  # fails) and falls below the floor.
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 3000.0
+    max_monthly_usd: 9000.0
+  - predicate: max_tool_calls
+    n: 15

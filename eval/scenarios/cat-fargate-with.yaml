@@ -1,0 +1,16 @@
+id: cat-fargate-with
+description: |
+  Paired with cat-fargate-without. Tests whether the Fargate
+  catalog entry is earning its place. Catalog role:
+  vcpuPerTask drives memory-variant gating (smallMemory / smallMemory_8 / smallMemory_16 / memoryStandardFargateOnDemand). The oneOf-mutex predicate enforces this structurally now.
+
+  Canonical (verified estimate): ~$531.91/mo. Band ±50%.
+prompt: |
+  Add AWS Fargate to my estimate in us-east-1.
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 265.96
+    max_monthly_usd: 797.87
+  - predicate: max_tool_calls
+    n: 15

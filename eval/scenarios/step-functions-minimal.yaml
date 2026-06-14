@@ -1,0 +1,49 @@
+id: step-functions-minimal
+description: |
+  AWS Step Functions Standard Workflows at the catalog's verified
+  minimalConfig — 1M executions/mo at 8 state transitions each = 8M
+  state transitions. Standard Workflows price at $0.025 per 1000 state
+  transitions, so this should price ~$200/mo (8M × $0.025/1000 = $200,
+  minus the 4000-transition free tier).
+
+  This scenario locks in the 2026-05-30 fix to a 2-week silent-$0 trap:
+  the entry was marked verified on 2026-05-16 with `unit:
+  millionPerMonth`, which lints as a valid frequency unit but the Step
+  Functions pricing engine doesn't recognize it (only perHour, perDay,
+  perMonth are accepted) and silently zeroes the line. Caught by the
+  validate-verified-catalog.js sweep script. Lesson: PCT field options
+  define the pricing-engine's accepted enum; conventional volume units
+  outside that enum render the saved estimate $0.
+calls:
+  - tool: create_estimate
+    args:
+      name: eval-step-functions-1m
+  - tool: add_service
+    args:
+      estimate_id: ${estimate_id}
+      services: |
+        [{"service":"stepFunctionStandard","group":"Compute","config":{
+          "region":"us-east-1",
+          "description":"Standard Workflows 1M req/mo",
+          "numberOfExecutions":{"value":"1000000","unit":"perMonth"},
+          "stateTransition":"8"
+        }}]
+  - tool: validate_estimate
+    args:
+      estimate_id: ${estimate_id}
+  - tool: export_estimate
+    args:
+      estimate_id: ${estimate_id}
+expectations:
+  - predicate: save_succeeded
+  - predicate: no_tool_errors
+  - predicate: lint_verdict
+    expected: editable
+  - predicate: trajectory_includes
+    sequence: [create_estimate, add_service, validate_estimate, export_estimate]
+    strict: true
+  # Floor at $50/mo — well below the expected $200, but high enough that
+  # millionPerMonth-style silent-$0 regressions (a known trap class)
+  # would fail this rather than slip through.
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 50.0

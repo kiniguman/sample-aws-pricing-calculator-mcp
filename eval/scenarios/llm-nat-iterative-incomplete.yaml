@@ -1,0 +1,44 @@
+id: llm-nat-iterative-incomplete
+prompt: |
+  Build me an AWS Pricing Calculator estimate. Add a Lambda function
+  for an API at 100 million requests per month, and a NAT gateway with
+  1 availability zone. Both in us-east-1. Return the shareable URL.
+description: |
+  Validates the export-refusal recovery contract introduced when
+  exportWithLint was extended to refuse on `required-input` verdicts.
+
+  Mirrors the prompt class that produced production estimate
+  1ecef0095a36a7ae84c59c8fb350153ffdc019d2 (B): a minimally-specified
+  NAT gateway request — count + AZs given, data-processed NOT given.
+  Companion to the scripted nat-iterative-required-omitted scenario:
+  scripted proves the helper refuses synchronously; this proves a real
+  agent recovers from the refusal text in a realistic prompt context.
+
+  Two recovery paths the agent might take, both acceptable:
+
+    A) Call get_service_fields BEFORE attempting save, see
+       regionalNatGatewayDataProcessed in catalog required[], fill
+       in the example value. No refusal fires; passes cleanly.
+
+    B) Skip discovery, send a partial config, hit the refusal text
+       naming regionalNatGatewayDataProcessed, retry with the field
+       populated. Refusal IS load-bearing on this path.
+
+  Either path produces a costed estimate. Both pass save_succeeded
+  and estimate_renders_cost. `no_tool_errors` is intentionally NOT
+  asserted: path B necessarily includes one export_estimate with
+  isError:true. The trajectory itself (and tool_calls count) tells
+  you which path the agent took.
+
+  Expected: PASS today (after the fix). If a future bundle regresses
+  the refusal contract OR breaks the recovery hint text, this scenario
+  flips to FAIL — that's its job.
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 10.0
+  - predicate: trajectory_includes
+    sequence: [get_service_fields]
+    strict: false
+  - predicate: max_tool_calls
+    n: 15

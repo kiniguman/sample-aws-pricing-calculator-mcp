@@ -1,0 +1,56 @@
+id: cloudtrail-minimal
+description: |
+  AWS CloudTrail at the catalog's verified minimalConfig — S3 data
+  events on one trail (10M events/month). Encodes two CloudTrail
+  pricing surprises:
+
+  1. The four *Mult fields (OpsMult, dataOpsMult, networkActivityOpsMult,
+     eventMult) are PCT-required. Sending only event-count fields
+     without the corresponding multiplier causes lint to flag
+     required-input. The multipliers must all four be sent even if
+     not modeling that event class — set unused ones to a no-op
+     default ('1000000' = millions).
+
+  2. CloudTrail's first management trail is FREE. Modeling
+     management-only volume produces $0; data-event trails (S3,
+     Lambda, network activity) are paid from the first trail and
+     are the cheapest path to a meaningful cost.
+
+  At 10M S3 events/month this prices ~$10/mo.
+calls:
+  - tool: create_estimate
+    args:
+      name: eval-cloudtrail-minimal
+  - tool: add_service
+    args:
+      estimate_id: ${estimate_id}
+      services: |
+        [{"service":"awsCloudTrail","group":"Audit","config":{
+          "region":"us-east-1",
+          "description":"S3 data events on one trail",
+          "OpsMult":"1000000",
+          "dataOpsMult":"1000000",
+          "networkActivityOpsMult":"1000000",
+          "eventMult":"1000000",
+          "numberOfS3Ops":{"value":"10","unit":"perMonth"},
+          "numberOfS3Trails":"1"
+        }}]
+  - tool: validate_estimate
+    args:
+      estimate_id: ${estimate_id}
+  - tool: export_estimate
+    args:
+      estimate_id: ${estimate_id}
+expectations:
+  - predicate: save_succeeded
+  - predicate: no_tool_errors
+  - predicate: lint_verdict
+    expected: editable
+  - predicate: trajectory_includes
+    sequence: [create_estimate, add_service, validate_estimate, export_estimate]
+    strict: true
+  # Floor of $1 catches the silent-$0 regression class (where the
+  # Mult fields go missing, the count fields go missing, or
+  # the data-events-on-one-trail path stops being chargeable).
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 1.0

@@ -1,0 +1,33 @@
+id: llm-nat-cold-call
+prompt: |
+  Add a NAT gateway to my AWS estimate. 100 GB/month of data
+  processed, us-east-1. Return the shareable URL.
+description: |
+  Reproduces the dominant production failure mode for NAT gateway:
+  the agent cold-calls build_estimate with NAT in the payload before
+  any get_service_fields discovery, producing an estimate missing
+  required fields (regionalNatGatewayCount, regionalNatGatewayAzCount).
+  Production data (analyzer baseline 2026-05-29):
+    - 156 lint failures in 7d, 28% of all failures
+    - 0/43 NAT failures had a prior get_service_fields call
+    - 32/43 (74%) were build_estimate cold-calls; eid never appears
+      before lint time
+    - 0/32 same-eid recovery on the cold-call path
+
+  Today, with no preemptive catalog-required check, this scenario
+  EXPECTS to fail estimate_renders_cost. Once the B+A fix lands
+  (preemptive catalog-required check in validateConfigKeys + lint-
+  refusal extension to required-input), the agent should be
+  redirected to get_service_fields, retry, and produce a priced
+  estimate. The scenario flipping from FAIL → PASS is the
+  falsifiable test of the fix.
+expectations:
+  - predicate: save_succeeded
+  - predicate: no_tool_errors
+  - predicate: trajectory_includes
+    sequence: [get_service_fields]
+    strict: false
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 1.0
+  - predicate: max_tool_calls
+    n: 10

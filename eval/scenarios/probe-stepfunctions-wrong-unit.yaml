@@ -1,0 +1,100 @@
+id: probe-stepfunctions-wrong-unit
+prompt: |
+  Add AWS Step Functions Standard workflows to my estimate. About
+  1 million executions per month, 8 state transitions each,
+  us-east-1. Return the shareable URL.
+description: |
+  DAMAGE PROBE — observational, not regression.
+
+  Reverts Step Functions to its pre-2026-05-30 broken state:
+  numberOfExecutions example/unit/minimalConfig use 'millionPerMonth'
+  instead of 'perMonth'. The unit is silently accepted (it's a real
+  frequency unit in the calculator catalog — Lambda uses it) but the
+  Step Functions pricing engine only honors perHour/perDay/perMonth.
+  Saves with millionPerMonth render \$0 silently.
+
+  Critically also drops the trap text that warns about this. A real
+  agent reading the broken catalog has no in-band way to know the
+  unit is wrong. The 745923c fix added BOTH the corrected unit AND
+  the trap text — this probe tests what a model does without the
+  warning.
+
+  Goal: measure damage from a wrong-but-shape-valid unit. Two
+  possible behaviors:
+
+    A) Agent copies the catalog example verbatim → ships an
+       estimate with millionPerMonth → calculator silently zeroes
+       → user sees \$0 estimate.
+    B) Agent normalizes the unit from training prior (i.e. picks
+       perMonth despite catalog example) → ships a working estimate.
+catalog_mutations:
+  - op: replaceEntry
+    service: awsStepFunctions
+    value:
+      $schema: ../schema.json
+      serviceCode: awsStepFunctions
+      displayName: AWS Step Functions
+      status: verified
+      lastVerifiedAt: '2026-05-15'
+      verifiedEstimateId: 0000000000000000000000000000000000000000
+      required: []
+      optional: []
+      traps:
+        - awsStepFunctions is a subServiceSelector parent. Call addService('stepFunctionStandard', ...) and/or addService('stepFunctionExpress', ...). EstimateBuilder merges children into a single parent envelope.
+      subServices:
+        - serviceCode: stepFunctionStandard
+          estimateFor: template_0
+          required:
+            - field: numberOfExecutions
+              hint: Monthly workflow executions
+              shape: "{ value: '<n>', unit: 'millionPerMonth' | 'perDay' | 'perHour' }"
+              example:
+                value: '1'
+                unit: millionPerMonth
+            - field: stateTransition
+              hint: Average state transitions per execution (numericInput — plain string)
+              shape: string
+              example: '8'
+        - serviceCode: stepFunctionExpress
+          estimateFor: template_0
+          required:
+            - field: MonthlyWorkflowReqs
+              hint: Monthly workflow requests
+              shape: "{ value: '<n>', unit: 'millionPerMonth' | 'perDay' | 'perHour' }"
+              example:
+                value: '10'
+                unit: millionPerMonth
+            - field: Average duration of workflow
+              hint: Duration of each workflow execution in seconds
+              shape: string
+              example: '30'
+            - field: stateMachineDefinitionSize
+              hint: Memory consumed by each workflow execution
+              shape: "{ value: '<n>', unit: 'mb|NA' | 'gb|NA' }"
+              example:
+                value: '64'
+                unit: mb|NA
+      minimalConfig:
+        stepFunctionStandard:
+          region: us-east-1
+          description: Standard Workflows
+          numberOfExecutions:
+            value: '1'
+            unit: millionPerMonth
+          stateTransition: '8'
+        stepFunctionExpress:
+          region: us-east-1
+          description: Express Workflows
+          MonthlyWorkflowReqs:
+            value: '10'
+            unit: millionPerMonth
+          Average duration of workflow: '30'
+          stateMachineDefinitionSize:
+            value: '64'
+            unit: mb|NA
+expectations:
+  - predicate: trajectory_includes
+    sequence: [get_service_fields]
+    strict: false
+  - predicate: max_tool_calls
+    n: 20

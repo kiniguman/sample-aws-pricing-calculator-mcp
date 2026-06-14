@@ -1,0 +1,35 @@
+id: cat-nat-without
+description: |
+  Paired with cat-nat-with. Same prompt + same assertions, but the
+  NAT Gateway catalog entry is removed. Tests whether NAT survives
+  on manifest + lint alone.
+
+  Decision rule:
+    - cat-nat-with passes AND cat-nat-without passes → catalog entry
+      is redundant; delete from production catalog.
+    - cat-nat-with passes AND cat-nat-without fails → catalog entry
+      earns its place. Failure mode tells you which role
+      (Role A magnitude, Role B required residual, etc).
+    - Both fail → broken regardless; investigate prompt or lint.
+
+  NAT's manifest defaults are 5 gateways × 3 AZs. If the agent picks
+  manifest-default magnitudes here, the cost is ~5x what the catalog's
+  minimalConfig would have produced — the estimate_renders_cost floor
+  needs to be loose enough to allow either, but the prompt+assertion
+  pair should expose magnitude misbehavior.
+prompt: |
+  Add a NAT Gateway to my estimate in us-east-1.
+catalog_mutations:
+  - op: removeEntry
+    service: networkAddressTranslationNatGatewayVpc
+expectations:
+  - predicate: save_succeeded
+  # Same band as cat-nat-with: $15 to $50/mo. Without the catalog,
+  # the agent likely picks manifest defaults (5×3) and over-estimates
+  # to ~$72/mo — failing the ceiling. That's the diagnostic signal:
+  # the catalog's minimalConfig is what holds the magnitude in band.
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 15.0
+    max_monthly_usd: 50.0
+  - predicate: max_tool_calls
+    n: 10

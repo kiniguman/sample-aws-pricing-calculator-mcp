@@ -1,0 +1,43 @@
+id: cat-ec2-multi-group-utilization
+description: |
+  Pinned to a 2026-06-07 production failure: user asked for two
+  g6e.24xlarge in a "Prod" group at 80% utilization plus one
+  g6e.24xlarge in a "Dev" group at 60% utilization, all in us-east-1.
+
+  Three bugs the production trace exposed:
+    1. The agent passed `workload` as an object that didn't match the
+       canonical envelope shape; lib/ec2.js silently stringified it to
+       "[object Object]" and the calculator rendered the estimate
+       read-only.
+    2. The agent passed `numberOfInstances` (made-up field name)
+       which validateConfigKeys silently accepted because the EC2
+       early-return bypass let it through.
+    3. Conceptual confusion: the agent treated `workload: '80'` as
+       "80% utilization", not as "80 instances". The synthetic
+       `utilization` field exists for this purpose but the trap
+       documentation didn't lead the agent there.
+
+  Post-fix expectations: the agent's first save attempt produces an
+  editable estimate with both the correct instance counts (workload
+  data of '2' and '1') AND the correct utilization values (80 and 60
+  in pricingStrategy.value.utilizationValue).
+prompt: |
+  Create an EC2 pricing estimate. For prod, 2× g6e.24xlarge at 80%
+  utilization. Add a separate dev group with one g6e.24xlarge at 60%
+  utilization. Region us-east-1.
+expectations:
+  - predicate: save_succeeded
+  # The utilization values must land in pricingStrategy, not in
+  # workload. Pre-fix the production agent put '80' into workload.data,
+  # leaving utilization at the default 100. Post-fix the catalog hint
+  # pushes the agent to the synthetic `utilization` field which routes
+  # into pricingStrategy.value.utilizationValue. The 80 should appear
+  # in the FIRST (Prod) group's pricingStrategy regardless of whether
+  # the agent splits "2 instances" into one workload=2 entry or two
+  # workload=1 entries.
+  - predicate: saved_blob_field_equals
+    paths:
+      - groups.*.services.*.calculationComponents.pricingStrategy.value.utilizationValue
+    equals: '80'
+  - predicate: max_tool_calls
+    n: 15

@@ -1,0 +1,28 @@
+id: probe-agentcore-runtime-vague
+prompt: |
+  Add Amazon Bedrock AgentCore Runtime to my estimate.
+  us-east-1, sample workload for a moderate production app.
+  Return the URL.
+description: |
+  FALSIFIER — tests H2/H3 ("underspecified prompts → catalog
+  calibrates magnitudes") on a service with weak training prior.
+
+  Same service as probe-agentcore-runtime-specific, but the prompt
+  is intentionally underspecified (no session count, no duration,
+  no vCPU/memory). The framing predicts: without catalog
+  calibration AND without a strong training prior, the agent's
+  invented magnitudes will drift far from canonical (\$68.79
+  for 100K sessions / 60s / 0.5 vCPU / 2 GB / 50% I/O).
+
+  This is the strongest test. If the cost lands close to canonical,
+  it means Sonnet has a "moderate AgentCore Runtime workload"
+  prior despite the service's recency. If it drifts wildly
+  (10× either way), it confirms catalog calibration matters most
+  for unfamiliar services + vague prompts — exactly where probe
+  evidence had been thinnest.
+expectations:
+  - predicate: trajectory_includes
+    sequence: [get_service_fields]
+    strict: false
+  - predicate: max_tool_calls
+    n: 20

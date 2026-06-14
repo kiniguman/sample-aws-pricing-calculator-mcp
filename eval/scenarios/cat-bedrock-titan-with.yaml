@@ -1,0 +1,32 @@
+id: cat-bedrock-titan-with
+description: |
+  Paired with cat-bedrock-titan-without. Tests whether the
+  productCodes[] catalog field on amazonBedrock.subServices[].amazon
+  produces a usable lint redirect when an agent calls add_service
+  with a product-level Bedrock code (titanTextEmbeddingsV2) that
+  the manifest's amazonBedrock.templates[] doesn't claim.
+
+  Production observed 14 sub-service-active-list blocks in 9.5hr
+  on this exact pattern (2026-06-02). Pre-fix, the lint hint fell
+  through to the generic "use parent:child like amazonS3:Standard"
+  message, leaving the agent without a concrete provider code to
+  retry with.
+
+  Decision rule:
+    - both saved & ratio < 3× → REDUNDANT
+    - with saves, without fails → EARNS PLACE (the productCodes hint
+      is what redirects the agent to the provider code)
+    - both fail → BROKEN
+prompt: |
+  Add Amazon Titan Text Embeddings V2 to my estimate in us-east-1.
+expectations:
+  - predicate: save_succeeded
+  # Titan Text Embeddings V2 is dirt-cheap per token. Even a generous
+  # 10M monthly request workload prices in the low single digits / mo.
+  # Band [$0.50, $50] keeps the assertion permissive — the value of
+  # this scenario is in the redirect, not the magnitude.
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 0.5
+    max_monthly_usd: 200.0
+  - predicate: max_tool_calls
+    n: 15

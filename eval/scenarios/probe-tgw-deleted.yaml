@@ -1,0 +1,32 @@
+id: probe-tgw-deleted
+prompt: |
+  Add an AWS Transit Gateway to my estimate. us-east-1, one
+  attachment. Return the shareable URL.
+description: |
+  DAMAGE PROBE — observational.
+
+  Removes the Transit Gateway catalog entry. Same prompt-specificity
+  level as probe-nat-deleted: gives region and attachment count,
+  doesn't specify data-processed volume.
+
+  Canonical reference (1 attachment, 100 GB/mo data-processed):
+  \$38.50/mo. The hourly base ($36.50) dominates; data-processed
+  contributes ~$2/mo. Even if the agent omits data-processed
+  entirely, the rendered cost should still be ~\$36.50 (just the
+  base) — meaningfully different from "broken estimate" but
+  noticeably under canonical.
+
+  Asks the Lambda-style question for a non-Lambda service: with
+  no catalog defaults, does the agent invent data-processed or
+  leave it blank? If left blank, the calculator silently defaults
+  it (per [[calculator-defaults-missing-required]]) and renders
+  some cost.
+catalog_mutations:
+  - op: removeEntry
+    service: transitGatewayVpc
+expectations:
+  - predicate: trajectory_includes
+    sequence: [get_service_fields]
+    strict: false
+  - predicate: max_tool_calls
+    n: 20

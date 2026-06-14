@@ -1,0 +1,28 @@
+id: needs-grounding-redirect
+description: |
+  Cold build_estimate with a guessed-from-priors field id (not in PCT).
+  Should return isError:false with status:needs_field_grounding and a
+  next_step pointing the agent at get_service_fields. This scenario
+  asserts the redirect's *shape* — Group D (the LLM driver) will
+  later assert that an agent actually recovers from it.
+calls:
+  - tool: build_estimate
+    args:
+      name: eval-cold-call
+      services: |
+        [{"service":"aWSLambda","group":"API","config":{
+          "region":"us-east-1",
+          "description":"x",
+          "allocatedMemory":"512"
+        }}]
+expectations:
+  - predicate: no_tool_errors
+  - predicate: response_field_present
+    tool: build_estimate
+    field_path: status
+  - predicate: response_field_present
+    tool: build_estimate
+    field_path: services_to_inspect.0
+  - predicate: response_field_present
+    tool: build_estimate
+    field_path: next_step

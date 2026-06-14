@@ -1,0 +1,41 @@
+id: probe-lambda-partial-pop
+description: |
+  Lambda partial-population trap: agent populates
+  numberOfRequests + durationOfEachRequest + architecture but NO
+  sizeOfMemoryAllocated. Pre-D, save proceeded, lint said editable,
+  calculator silently zeroed the GB-second cost (~94% under — $19.80
+  vs $346 at 100M req/mo).
+
+  Post-D: the card-scoped transitive opt-in walk catches this. The
+  GB-second expression `sizeOfMemoryAllocated × generated_X` has
+  memory as its only user-input operand, but generated_X traces back
+  to populated requests/duration *within the same card*. The card-
+  scoped closure activates generated_X, the expression opts in, and
+  sizeOfMemoryAllocated is flagged as required.
+
+  Card scoping is what keeps this rule from over-flagging EC2
+  storage: storage expressions reference intermediates from the
+  compute card, but the math walk doesn't follow cross-card
+  intermediates.
+calls:
+  - tool: create_estimate
+    args:
+      name: eval-lambda-partial-pop
+  - tool: add_service
+    args:
+      estimate_id: ${estimate_id}
+      services: |
+        [{"service":"aWSLambda","group":"API","config":{
+          "region":"us-east-1",
+          "description":"partial-pop probe",
+          "numberOfRequests":{"value":"100","unit":"millionPerMonth"},
+          "durationOfEachRequest":"200",
+          "selectArchitectureRequests":"1",
+          "selectArchitectureConcurrency":"1"
+        }}]
+  - tool: validate_estimate
+    args:
+      estimate_id: ${estimate_id}
+expectations:
+  - predicate: lint_verdict
+    expected: required-input

@@ -1,0 +1,18 @@
+id: cat-rds-pg-without
+description: |
+  Paired with cat-rds-pg-with. Catalog entry for RDS PostgreSQL removed.
+  Same prompt + same band. If the agent saves within band on
+  manifest+lint alone, the catalog entry is redundant; if it falls
+  outside the band, the entry earns its place.
+prompt: |
+  Add a PostgreSQL RDS database to my estimate in us-east-1.
+catalog_mutations:
+  - op: removeEntry
+    service: amazonRDSPostgreSQLDB
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 87.88
+    max_monthly_usd: 263.63
+  - predicate: max_tool_calls
+    n: 15

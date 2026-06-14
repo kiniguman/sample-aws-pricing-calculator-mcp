@@ -1,0 +1,40 @@
+id: probe-cost-feedback-recovery
+prompt: |
+  I just saved a Lambda estimate for 100M requests per month and
+  it rendered a monthly cost of \$33.97. My colleague said the
+  expected cost for 100M Lambda requests should be in the \$300-400
+  range. Can you re-create the estimate with values that would land
+  in that range?
+
+  Workload: 100M requests per month, us-east-1. Return the URL.
+description: |
+  RECOVERY-FEEDBACK PROBE — observational.
+
+  Tests whether explicit cost-feedback in the prompt drives the
+  agent to pick larger / more-realistic Lambda config values.
+
+  Setup mirrors the runtime-gate proposal: the agent receives
+  feedback that its previous attempt rendered an anomalously low
+  cost, with a target range. No catalog entry — pure manifest +
+  feedback signal.
+
+  Outcomes:
+    A) Agent picks values that produce \$300-400/mo (close to
+       canonical \$346.47 at 1 GB / 200ms / x86). Implies cost
+       feedback IS actionable; runtime gate could substitute for
+       Role A magnitude calibration.
+    B) Agent re-attempts with higher values but lands wide of
+       target (e.g. \$50, \$1000). Feedback signal received but
+       not converted into useful magnitude calibration.
+    C) Agent ignores the feedback or picks the same low values.
+       Recovery loop wouldn't help; catalog calibration is still
+       the answer.
+catalog_mutations:
+  - op: removeEntry
+    service: aWSLambda
+expectations:
+  - predicate: trajectory_includes
+    sequence: [get_service_fields]
+    strict: false
+  - predicate: max_tool_calls
+    n: 20

@@ -1,0 +1,34 @@
+id: llm-nat-iterative
+prompt: |
+  Build me an AWS Pricing Calculator estimate. First add a Lambda
+  function for an API at 100 million requests per month. Then add
+  a NAT gateway at 100 GB/month of data processed. Both in
+  us-east-1. Return the shareable URL.
+description: |
+  The 26% iterative failure mode for NAT gateway. Agent calls
+  add_service multiple times across multiple services. NAT goes in
+  with whichever fields the agent guessed at; lint produces
+  required-input verdict; export proceeds anyway (lint blocks only
+  read-only today); the saved estimate "succeeds" but renders
+  broken. Production data (2026-05-29):
+    - 9/11 iterative NAT failures ended in save.ok despite lint
+      flagging required-input
+    - 0/11 had final lint verdict editable
+    - 0/11 called get_service_fields for NAT
+
+  Today, with no preemptive catalog-required check AND lint
+  blocking only read-only, this scenario EXPECTS to either
+  (a) save successfully but fail estimate_renders_cost (NAT row
+  renders $0), or (b) trigger the cold-call cascade and never
+  recover. After the B+A fix the agent should be redirected to
+  discovery before any save commits.
+expectations:
+  - predicate: save_succeeded
+  - predicate: no_tool_errors
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 10.0
+  - predicate: trajectory_includes
+    sequence: [get_service_fields]
+    strict: false
+  - predicate: max_tool_calls
+    n: 12

@@ -1,0 +1,16 @@
+id: cat-sagemaker-with
+description: |
+  Paired with cat-sagemaker-without. Tests whether the SageMaker
+  catalog entry is earning its place. Catalog role:
+  Sub-service-selector parent for sageMakerStudioNotebooks / sageMakerRealTimeInference / etc. Multiple columnFormIPM fields per child; rebrand SageMaker → SageMaker AI nuance.
+
+  Canonical (verified estimate): ~$90.8/mo. Band ±50%.
+prompt: |
+  Add Amazon SageMaker Studio Notebooks to my estimate in us-east-1.
+expectations:
+  - predicate: save_succeeded
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 45.4
+    max_monthly_usd: 136.2
+  - predicate: max_tool_calls
+    n: 15
