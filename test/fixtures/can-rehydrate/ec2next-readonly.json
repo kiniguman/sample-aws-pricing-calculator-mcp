@@ -1,0 +1,17 @@
+{
+  "savedBlob": {
+    "services": {
+      "s1-uuid": {
+        "serviceCode": "ec2Enhancement",
+        "estimateFor": "eC2Next",
+        "calculationComponents": {}
+      }
+    }
+  },
+  "perServiceDefinitions": {
+    "ec2Enhancement": {
+      "serviceCode": "ec2Enhancement",
+      "templates": [{ "id": "template" }]
+    }
+  }
+}
