@@ -1,103 +1,42 @@
 #!/usr/bin/env node
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: MIT-0
+//
+// Entry point. The 9 tool registrations live here; their long
+// descriptions are in lib/tool-descriptions.js and the helpers each
+// handler calls into are in lib/handler-helpers.js. Read this file
+// to understand the wiring; read those files for the prose and logic.
+
 const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
 const { z } = require('zod');
-const { PARTITIONS, loadManifest, findService, fetchServiceDefinition, extractInputFields, enrichFieldsWithMetadata, searchServices, fetchEstimate, estimateToMarkdown } = require('./lib/aws-client');
+const path = require('node:path');
+
+const { PARTITIONS, loadManifest, findService, fetchServiceDefinition, extractInputFields, searchServices, fetchEstimate, estimateToMarkdown } = require('./lib/aws-client');
 const EstimateBuilder = require('./lib/estimate-builder');
+const { createEstimateStore } = require('./lib/estimate-store');
+const { loadCatalog } = require('./lib/catalog');
+const { nextStepFor } = require('./lib/lint-hints');
+const { traceTool } = require('./lib/trace-logger');
+const traceEvents = require('./lib/trace-events');
+const { runWithSession } = require('./lib/request-context');
+const { createHandlerHelpers, mcpJsonOk, mcpTextErr, checkPartition, parseServicesArg } = require('./lib/handler-helpers');
+const desc = require('./lib/tool-descriptions');
 
-const estimates = new Map();
-
-const META_KEYS = new Set(['region', 'description']);
-
-function levenshtein(a, b) {
-  const m = a.length, n = b.length;
-  const d = Array.from({ length: m + 1 }, (_, i) => i);
-  for (let j = 1; j <= n; j++) {
-    let prev = d[0];
-    d[0] = j;
-    for (let i = 1; i <= m; i++) {
-      const tmp = d[i];
-      d[i] = a[i - 1] === b[j - 1] ? prev : 1 + Math.min(prev, d[i], d[i - 1]);
-      prev = tmp;
-    }
-  }
-  return d[m];
+// CALCMCP_CATALOG_DIR is an eval-only override — the eval harness uses
+// it to point the server at a mutated copy of the catalog so probe
+// scenarios can ask "what does the agent do with bad catalog data?"
+// without rewriting the canonical files. Production deployments leave
+// it unset; if a deployment does set it, log to stderr so it's visible
+// in CloudWatch.
+const _catalogDir = process.env.CALCMCP_CATALOG_DIR
+  || path.join(__dirname, 'catalog', 'services');
+if (process.env.CALCMCP_CATALOG_DIR) {
+  process.stderr.write(`NOTE: catalog override active — loading from ${_catalogDir}\n`);
 }
+const catalog = loadCatalog(_catalogDir, { strict: false });
 
-function suggestMatch(invalid, validIds, max = 3) {
-  const lower = invalid.toLowerCase();
-  return validIds
-    .map(id => ({ id, dist: levenshtein(lower, id.toLowerCase()) }))
-    .filter(m => m.dist <= Math.max(Math.floor(invalid.length * 0.6), 3))
-    .sort((a, b) => a.dist - b.dist)
-    .slice(0, max)
-    .map(m => m.id);
-}
-
-async function validateConfigKeys(serviceKey, config, partition) {
-  if (serviceKey.toLowerCase() === 'ec2enhancement') return null;
-
-  const configKeys = Object.keys(config).filter(k => !META_KEYS.has(k));
-  if (configKeys.length === 0) return null;
-
-  try {
-    const manifest = await loadManifest(partition || 'aws');
-    const svc = findService(manifest, serviceKey);
-    if (!svc) return null; // service not found — will fail later at export
-
-    const def = await fetchServiceDefinition(manifest, svc.key, partition || 'aws');
-    if (!def) return null;
-
-    const fields = extractInputFields(def);
-    const validIds = fields.map(f => f.id);
-    const validSet = new Set(validIds);
-    const invalid = configKeys.filter(k => !validSet.has(k));
-    if (invalid.length > 0) {
-      const lines = invalid.map(k => {
-        const suggestions = suggestMatch(k, validIds);
-        return suggestions.length
-          ? `  "${k}" — did you mean: ${suggestions.map(s => `"${s}"`).join(', ')}?`
-          : `  "${k}" — no close match found`;
-      });
-      return `Invalid field IDs for ${svc.key}:\n${lines.join('\n')}\nUse get_service_fields to discover valid field IDs.`;
-    }
-
-    // Validate selector values within columnFormIPM fields
-    const enriched = await enrichFieldsWithMetadata(def, fields);
-    const selectorErrors = [];
-    for (const field of enriched) {
-      if (field.type !== 'columnFormIPM' || !field.selectorValues) continue;
-      const configVal = config[field.id];
-      if (!configVal || !configVal.value || !Array.isArray(configVal.value)) continue;
-
-      for (const row of configVal.value) {
-        for (const [selectorId, allowedValues] of Object.entries(field.selectorValues)) {
-          if (!allowedValues || allowedValues.length === 0) continue;
-          const cell = row[selectorId];
-          if (!cell) continue;
-          const cellValue = typeof cell === 'object' && cell.value !== undefined ? cell.value : cell;
-          if (typeof cellValue !== 'string') continue;
-          if (!allowedValues.includes(cellValue)) {
-            const suggestions = suggestMatch(cellValue, allowedValues);
-            const hint = suggestions.length
-              ? ` Did you mean: ${suggestions.map(s => `"${s}"`).join(', ')}?`
-              : '';
-            selectorErrors.push(`  Field "${field.id}", selector "${selectorId}": "${cellValue}" is not valid.${hint}\n    Allowed: ${allowedValues.slice(0, 10).join(', ')}${allowedValues.length > 10 ? ` ... (${allowedValues.length} total)` : ''}`);
-          }
-        }
-      }
-    }
-    if (selectorErrors.length > 0) {
-      return `Invalid selector values for ${svc.key}:\n${selectorErrors.join('\n')}`;
-    }
-
-    return null;
-  } catch {
-    return null; // validation is best-effort; don't block on fetch failures
-  }
-}
+const estimates = createEstimateStore();
 
 const pkg = require('./package.json');
 
@@ -106,55 +45,63 @@ const server = new McpServer({
   version: pkg.version,
 });
 
+const helpers = createHandlerHelpers({ catalog });
+const {
+  addEntries,
+  lintEstimate,
+  estimateNotFoundResult,
+  exportWithLint,
+  buildFieldsResult,
+  maybeBuildRedirectResult,
+  maybeBuildProductRedirect,
+  annotateSearchResults,
+} = helpers;
+
 server.tool(
   'get_server_info',
-  'Get version and capability information about this MCP server.',
+  desc.GET_SERVER_INFO,
   {},
-  async () => {
-    return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify({
-          name: pkg.name,
-          version: pkg.version,
-          description: pkg.description,
-          tools: ['search_services', 'get_service_fields', 'create_estimate', 'add_service', 'export_estimate', 'import_estimate', 'get_server_info'],
-          partitions: Object.keys(PARTITIONS),
-        }, null, 2),
-      }],
-    };
-  }
+  traceTool('get_server_info', async () => mcpJsonOk({
+    name: pkg.name,
+    version: pkg.version,
+    description: pkg.description,
+    tools: ['search_services', 'get_service_fields', 'create_estimate', 'add_service', 'build_estimate', 'validate_estimate', 'export_estimate', 'import_estimate', 'get_server_info'],
+    partitions: Object.keys(PARTITIONS),
+  }))
 );
 
 server.tool(
   'search_services',
-  'Search AWS services available in the calculator. Returns service keys and names. Use this to find the correct service key before adding it to an estimate. Supports multiple comma-separated search terms in a single call (e.g. "Lambda, S3, API Gateway, CloudWatch").',
+  desc.SEARCH_SERVICES,
   {
     query: z.string().describe('One or more search terms, comma-separated (e.g. "Lambda, S3, Amazon Personalize, API Gateway, CloudWatch")'),
     partition: z.string().optional().describe('AWS partition to search in (default: "aws"). Valid values: "aws", "aws-iso", "aws-iso-b"'),
   },
-  async ({ query, partition }) => {
+  traceTool('search_services', async ({ query, partition }) => {
     const p = partition || 'aws';
-    if (!PARTITIONS[p]) {
-      return { content: [{ type: 'text', text: `Unknown partition '${p}'. Valid partitions: ${Object.keys(PARTITIONS).join(', ')}` }], isError: true };
-    }
+    const partErr = checkPartition(p);
+    if (partErr) return partErr;
     const manifest = await loadManifest(p);
-    const results = searchServices(manifest, query);
-    return { content: [{ type: 'text', text: JSON.stringify(results, null, 2) }] };
-  }
+    // annotateSearchResults adds redirect_to + note on hits whose
+    // serviceCode is a product-level orphan (Bedrock Titan/Nova family).
+    // Discovery-time hint earns 6→3 tool-call reduction on Sonnet 4.5
+    // empirically; the same data drives the post-save lint refusal hint
+    // for less-capable agents that skip this signal.
+    return mcpJsonOk(annotateSearchResults(searchServices(manifest, query)));
+  })
 );
 
 server.tool(
   'get_service_fields',
-  'Get the input fields for one or more AWS services. Returns field IDs, types, labels, and valid options. Use this to discover what configuration a service accepts before adding it to an estimate. The field IDs returned here are the exact keys to use in add_service config. Accepts multiple comma-separated service keys. IMPORTANT: When duplicate fields exist with version suffixes (e.g. fieldName and fieldName_v2), ALWAYS use the highest version — it maps to the latest configuration path. Ignore lower versions.',
-  { service: z.string().describe('One or more service keys, comma-separated (e.g. "aWSLambda, amazonS3, stepFunctionStandard, amazonApiGateway")'),
+  desc.GET_SERVICE_FIELDS,
+  {
+    service: z.string().describe('One or more service keys, comma-separated (e.g. "aWSLambda, amazonS3, stepFunctionStandard, amazonApiGateway")'),
     partition: z.string().optional().describe('AWS partition to fetch from (default: "aws"). Valid values: "aws", "aws-iso", "aws-iso-b"'),
   },
-  async ({ service, partition }) => {
+  traceTool('get_service_fields', async ({ service, partition }) => {
     const p = partition || 'aws';
-    if (!PARTITIONS[p]) {
-      return { content: [{ type: 'text', text: `Unknown partition '${p}'. Valid partitions: ${Object.keys(PARTITIONS).join(', ')}` }], isError: true };
-    }
+    const partErr = checkPartition(p);
+    if (partErr) return partErr;
     const manifest = await loadManifest(p);
     const keys = service.split(',').map(s => s.trim()).filter(Boolean);
     const results = [];
@@ -164,142 +111,226 @@ server.tool(
       const svc = findService(manifest, key);
       if (!svc) { errors.push(`Service "${key}" not found.`); continue; }
 
+      // Product-code redirect: agent reached for an orphan child like
+      // titanTextEmbeddingsV2 that the calculator's parent envelope
+      // doesn't claim in templates[]. Returns null when no productCodes
+      // entry covers this service. Checked BEFORE fetching the def to
+      // skip an unnecessary network call when we know we're redirecting.
+      const productRedirect = await maybeBuildProductRedirect({ svc, partition: p });
+      if (productRedirect) { results.push(productRedirect); continue; }
+
       const definition = await fetchServiceDefinition(manifest, svc.key, p);
       if (!definition) { errors.push(`Failed to fetch definition for "${svc.key}".`); continue; }
 
+      // Parent-envelope redirect (e.g. amazonS3 → amazonS3Standard).
+      // Returns null if no redirect applies; otherwise the redirect
+      // envelope with preview-fetched first-child fields inline.
       const fields = extractInputFields(definition);
-      const enriched = await enrichFieldsWithMetadata(definition, fields);
-      results.push({ serviceCode: svc.key, serviceName: svc.name, fields: enriched });
+      const redirect = await maybeBuildRedirectResult({ svc, fields, partition: p });
+      if (redirect) { results.push(redirect); continue; }
+
+      const result = await buildFieldsResult(svc, p);
+      if (result) results.push(result);
     }
 
     const output = errors.length
       ? { services: results, errors }
       : keys.length === 1 ? results[0] : results;
-    return { content: [{ type: 'text', text: JSON.stringify(output, null, 2) }] };
-  }
+    return mcpJsonOk(output);
+  })
 );
 
 server.tool(
   'create_estimate',
-  'Create a new empty estimate. Returns an estimate ID to use with add_service and export_estimate.',
+  desc.CREATE_ESTIMATE,
   {
     name: z.string().optional().describe('Name for the estimate (default: "My Estimate")'),
     partition: z.string().optional().describe('AWS partition for this estimate (default: "aws"). Valid values: "aws", "aws-iso", "aws-iso-b"'),
   },
-  async ({ name, partition }) => {
-    const p = partition || undefined;
-    if (p && !PARTITIONS[p]) {
-      return { content: [{ type: 'text', text: `Unknown partition '${p}'. Valid partitions: ${Object.keys(PARTITIONS).join(', ')}` }], isError: true };
-    }
-    const estimate = new EstimateBuilder(name, p);
-    estimates.set(estimate.id, estimate);
-    return { content: [{ type: 'text', text: JSON.stringify({ estimate_id: estimate.id, name: estimate.name }) }] };
-  }
+  traceTool('create_estimate', async ({ name, partition }) => {
+    const partErr = checkPartition(partition);
+    if (partErr) return partErr;
+    const estimate = new EstimateBuilder(name, partition || undefined);
+    await estimates.put(estimate);
+    // Mark the start of an estimate flow so observability can derive a
+    // session-shaped denominator instead of per-estimateId. See
+    // lib/trace-events.js#session for why build_estimate intentionally
+    // doesn't fire this event.
+    traceEvents.session.start({
+      estimateId: estimate.id,
+      partition: partition || 'aws',
+      origin: 'create_estimate',
+    });
+    return mcpJsonOk({ estimate_id: estimate.id, name: estimate.name });
+  })
 );
 
 server.tool(
   'add_service',
-  `Add one or more AWS services to an estimate. Accepts a single service or a JSON array of services in the "services" parameter.
-
-Field values follow these patterns based on field type:
-- numericInput: plain string value, e.g. "1000"
-- frequency: object with value and unit, e.g. {"value": "19", "unit": "millionPerMonth"}
-- fileSize: object with value and unit. The unit format is "{size}|{frequency}" where size comes from the field's validSizes (gb, tb, mb, etc.) and frequency is usually "NA". Check the field's defaultUnit from get_service_fields. Examples: {"value": "512", "unit": "mb|NA"}, {"value": "1", "unit": "tb|NA"}, {"value": "10", "unit": "gb|NA"}, {"value": "8", "unit": "gb|month"}
-- dropdown: string matching one of the option IDs from get_service_fields
-- durationInput: object with value and unit, e.g. {"value": "960", "unit": "min"}
-- pricingStrategy (Amazon EC2 only): object with model, term, and upfrontPayment keys, e.g. {"model": "computeSavings", "term": "1yr", "upfrontPayment": "None"}. Valid models: "instanceSavings" (EC2 Instance Savings Plans), "computeSavings" (Compute Savings Plans), "ondemand", "spot". For dedicated tenancy only: "reserved" (Standard RI), "convertible" (Convertible RI). Valid terms: "1yr", "3yr". Valid upfrontPayment: "None", "Partial", "All". Shorthand strings also work, e.g. "computeSavings1yrNoUpfront".
-
-Amazon EC2 (ec2Enhancement) has special config fields handled automatically:
-- "quantity": number of instances (e.g. "2" for 2 instances). Default: 1.
-- "instanceType": instance type (e.g. "g6.12xlarge")
-- "selectedOS": operating system. Default: "linux". Options: "linux", "windows", "rhel", "suse", etc.
-- "tenancy": "shared" (default), "dedicated", or "host"
-- "pricingStrategy": see above
-- "storageType": EBS volume type. Default: "Storage General Purpose gp3 GB Mo". Options: "Storage General Purpose gp3 GB Mo" (gp3), "Storage General Purpose GB Mo" (gp2), "Storage Provisioned IOPS GB Mo" (io1), "Storage Provisioned IOPS io2 GB month" (io2), "Storage Throughput Optimized HDD GB Mo" (st1), "Storage Cold HDD GB Mo" (sc1), "Storage Magnetic GB Mo" (magnetic)
-- "storageAmount": EBS storage, e.g. {"value": "30", "unit": "gb|NA"}
-- "snapshotFrequency": snapshot frequency, e.g. "0" for none
-- "gp3Iops": gp3 provisioned IOPS (e.g. "5000"). Auto-sets storageType to gp3 if not specified.
-- "gp3Throughput": gp3 provisioned throughput in MBps (e.g. "250"). Auto-sets storageType to gp3 if not specified.
-- "iops": io1 provisioned IOPS (e.g. "10000"). Auto-sets storageType to io1 if not specified.
-- "iops2": io2 provisioned IOPS (e.g. "20000"). Auto-sets storageType to io2 if not specified.
-- "storageAmountIo2": io2 storage amount, e.g. {"value": "100", "unit": "gb|NA"}
-Do NOT use get_service_fields for Amazon EC2 — these fields are handled by a custom transform.
-
-IMPORTANT: Before calling this tool, you MUST confirm the desired AWS region with the user if they haven't already specified one. Do NOT assume a default region. Always include "region" in each service config. Use "description" to label what each service entry represents. IMPORTANT: descriptions and group names must NOT contain <, >, or & characters (AWS rejects them).
-
-Config keys are validated against the service definition. Invalid field IDs will be rejected with suggested corrections. Use get_service_fields first to discover valid field IDs for a service.
-
-For batch mode, pass a JSON array in "services":
-[{"service":"aWSLambda","instance":"Compute","group":"Prod","config":{...}},{"service":"amazonS3Standard","group":"Prod","config":{...}}]`,
+  desc.ADD_SERVICE,
   {
     estimate_id: z.string().describe('Estimate ID from create_estimate'),
     services: z.string().describe('JSON array of service entries. Each entry: {"service":"serviceKey","instance":"optional","group":"optional","config":{...with region, description, and field values}}. Example: [{"service":"aWSLambda","group":"Prod","config":{"region":"eu-west-1","description":"Compute","numberOfRequests":{"value":"19","unit":"millionPerMonth"}}}]'),
   },
-  async ({ estimate_id, services: servicesStr }) => {
-    const estimate = estimates.get(estimate_id);
-    if (!estimate) return { content: [{ type: 'text', text: `Estimate "${estimate_id}" not found.` }], isError: true };
+  traceTool('add_service', async ({ estimate_id, services: servicesStr }) => {
+    const estimate = await estimates.get(estimate_id);
+    if (!estimate) return estimateNotFoundResult(estimate_id);
 
-    let entries;
+    const parsed = parseServicesArg(servicesStr);
+    if (parsed.error) return parsed.error;
+
+    const results = await addEntries(estimate, parsed.entries);
+    // All-or-nothing batch: if any entry failed validation, don't persist.
+    // The deep-cloned `estimate` is discarded; the stored snapshot stays as
+    // it was pre-call. Prevents the partial-state trap where a mixed batch
+    // [valid, invalid] left the valid entries stuck in the store, tripping
+    // the next save (observed 2026-06-02 OpenSearch agent recovery turn).
+    if (results.some(r => r.error)) return mcpJsonOk(results);
+    await estimates.put(estimate);
+    return mcpJsonOk(results);
+  })
+);
+
+server.tool(
+  'validate_estimate',
+  desc.VALIDATE_ESTIMATE,
+  { estimate_id: z.string().describe('Estimate ID from create_estimate or build_estimate') },
+  traceTool('validate_estimate', async ({ estimate_id }) => {
+    const estimate = await estimates.get(estimate_id);
+    if (!estimate) return estimateNotFoundResult(estimate_id);
+
     try {
-      entries = JSON.parse(servicesStr);
-      if (!Array.isArray(entries)) entries = [entries];
-    } catch {
-      return { content: [{ type: 'text', text: 'Invalid JSON in services parameter.' }], isError: true };
+      const { blob, lintResult } = await lintEstimate(estimate);
+      const hint = nextStepFor(lintResult, catalog);
+      // We ALWAYS return success: the verdict tells the caller what to
+      // do next. Read-only is informational, not a tool error. Hint
+      // surfaces remediation guidance at the top so the agent sees an
+      // actionable instruction without parsing the lint structure;
+      // null when the estimate is healthy enough to export.
+      return mcpJsonOk({
+        lint_verdict: lintResult.status,
+        next_step: hint,
+        lint_services: lintResult.services,
+        would_be_payload: blob,
+      });
+    } catch (err) {
+      return mcpTextErr(`Validate failed: ${err.message}`);
     }
-
-    const results = [];
-    for (const entry of entries) {
-      const { service, instance, group } = entry;
-      let config = entry.config;
-      if (!service || !config) {
-        results.push({ error: 'Missing "service" or "config" in entry', entry });
-        continue;
-      }
-      // Handle config passed as JSON string within the array
-      if (typeof config === 'string') {
-        try { config = JSON.parse(config); } catch {
-          results.push({ error: 'Invalid JSON in config', service });
-          continue;
-        }
-      }
-      const key = instance ? `${service}:${instance}` : service;
-      const validationError = await validateConfigKeys(service, config, estimate.partition);
-      if (validationError) {
-        results.push({ error: validationError, service: key });
-        continue;
-      }
-      estimate.addService(key, config, { group });
-      results.push({ success: true, service: key, group: group || '(ungrouped)' });
-    }
-    return { content: [{ type: 'text', text: JSON.stringify(results, null, 2) }] };
-  }
+  })
 );
 
 server.tool(
   'export_estimate',
-  'Export an estimate to calculator.aws and get a shareable URL. The link will show the full estimate with AWS-calculated pricing.',
+  desc.EXPORT_ESTIMATE,
   { estimate_id: z.string().describe('Estimate ID from create_estimate') },
-  async ({ estimate_id }) => {
-    const estimate = estimates.get(estimate_id);
-    if (!estimate) return { content: [{ type: 'text', text: `Estimate "${estimate_id}" not found.` }], isError: true };
+  traceTool('export_estimate', async ({ estimate_id }) => {
+    const estimate = await estimates.get(estimate_id);
+    if (!estimate) return estimateNotFoundResult(estimate_id);
 
     try {
-      const result = await estimate.export();
-      return { content: [{ type: 'text', text: JSON.stringify({ sharable_url: result.shareableUrl, aws_estimate_id: result.estimateId }) }] };
+      const result = await exportWithLint(estimate);
+      if (result.isError) return mcpTextErr(result.text);
+      return mcpJsonOk({ sharable_url: result.sharable_url, aws_estimate_id: result.aws_estimate_id });
     } catch (err) {
-      return { content: [{ type: 'text', text: `Export failed: ${err.message}` }], isError: true };
+      return mcpTextErr(`Export failed: ${err.message}`);
     }
+  })
+);
+
+// Extracted for testability — registered below via traceTool wrapper.
+// Pre-mint branches (bad-partition, JSON-parse, empty-array) return before
+// EstimateBuilder is constructed, so they have no estimate_id to surface.
+// All post-mint branches include estimate_id so failures correlate with
+// lint/save trace events for this estimate.
+async function buildEstimateHandler({ services: servicesStr, name, partition }) {
+  const partErr = checkPartition(partition);
+  if (partErr) return partErr;
+
+  const parsed = parseServicesArg(servicesStr);
+  if (parsed.error) return parsed.error;
+  if (parsed.entries.length === 0) return mcpTextErr('No services provided.');
+
+  const estimate = new EstimateBuilder(name, partition || undefined);
+  const results = await addEntries(estimate, parsed.entries);
+  const failed = results.filter(r => r.error);
+  if (failed.length > 0) {
+    // Pre-flight grounding nudge. The dominant build_estimate failure
+    // mode is calling cold with field IDs guessed from training priors
+    // (e.g. "allocatedMemory" vs the schema's "sizeOfMemoryAllocated").
+    // Return isError:false with a structured next_step pointing at
+    // get_service_fields — error responses have 0% recovery per the
+    // recovery widget, so a non-error envelope with explicit guidance
+    // is the only redirect that has a chance. Per-entry results
+    // (with did-you-mean hints from invalidFieldIdsHintFor) are
+    // preserved in issues[] so no information is lost.
+    const servicesToInspect = [...new Set(
+      failed.map(r => String(r.service || '').split(':')[0]).filter(Boolean),
+    )];
+    try {
+      traceEvents.buildEstimate.needsGrounding({
+        estimateId: estimate.id,
+        servicesToInspect,
+        failureCount: failed.length,
+      });
+    } catch {}
+    // Explicit isError:false (not absent) — the recovery widget keys on
+    // this exact value to distinguish "pre-flight nudge, retry me" from
+    // "tool error, give up." Production observed 0% recovery on
+    // isError:true; the structured-redirect-with-explicit-false envelope
+    // is the only shape that gets agents to retry.
+    return { ...mcpJsonOk({
+      estimate_id: estimate.id,
+      status: 'needs_field_grounding',
+      next_step: `Field IDs/values for ${servicesToInspect.join(', ')} did not match the schema. Call get_service_fields for those services to discover valid field IDs and value shapes, then retry build_estimate with the corrected payload.`,
+      services_to_inspect: servicesToInspect,
+      issues: results,
+    }), isError: false };
   }
+  await estimates.put(estimate);
+
+  try {
+    const exportResult = await exportWithLint(estimate);
+    if (exportResult.isError) {
+      // Include estimate_id so the lint-refused failure correlates with
+      // the lint trace event emitted by exportWithLint. The body switches
+      // from a plain string to JSON; the multi-line "Next step:" hint inside
+      // exportResult.text gets escaped (\n literals) but is still readable.
+      return mcpTextErr(JSON.stringify({ estimate_id: estimate.id, error: exportResult.text }));
+    }
+    return mcpJsonOk({
+      estimate_id: estimate.id,
+      sharable_url: exportResult.sharable_url,
+      aws_estimate_id: exportResult.aws_estimate_id,
+      services: results,
+    });
+  } catch (err) {
+    // Include estimate_id so the failure correlates with the prior
+    // lint/save.send/save.fail trace events for this estimate. The body
+    // switches from a plain string to JSON; agents reading the text field
+    // still see the failure, structured consumers see the id.
+    return mcpTextErr(JSON.stringify({ estimate_id: estimate.id, error: `Build failed: ${err.message}` }));
+  }
+}
+
+server.tool(
+  'build_estimate',
+  desc.BUILD_ESTIMATE,
+  {
+    services: z.string().describe('JSON array of service entries. Same shape as add_service. Each entry: {"service":"serviceKey","instance":"optional","group":"optional","config":{...with region, description, and field values}}.'),
+    name: z.string().optional().describe('Estimate name (default: "My Estimate")'),
+    partition: z.string().optional().describe('AWS partition (default: "aws"). Valid values: "aws", "aws-iso", "aws-iso-b"'),
+  },
+  traceTool('build_estimate', buildEstimateHandler)
 );
 
 server.tool(
   'import_estimate',
-  'Download an existing AWS Pricing Calculator estimate by URL or ID. Returns the estimate in JSON (raw, for modifications like region swaps) or Markdown (for LLM consumption, summaries, funding recommendations).',
+  desc.IMPORT_ESTIMATE,
   {
     estimate_id: z.string().describe('Estimate ID or full calculator.aws URL (e.g. "bedb9a10..." or "https://calculator.aws/#/estimate?id=bedb9a10...")'),
     format: z.enum(['json', 'markdown']).optional().describe('Output format: "json" for raw data (default), "markdown" for LLM-friendly summary'),
   },
-  async ({ estimate_id, format }) => {
+  traceTool('import_estimate', async ({ estimate_id, format }) => {
     // Extract ID from URL if needed
     let id = estimate_id;
     const urlMatch = estimate_id.match(/[?&]id=([a-f0-9]+)/);
@@ -310,19 +341,70 @@ server.tool(
       const output = (format === 'markdown')
         ? estimateToMarkdown(data)
         : JSON.stringify(data, null, 2);
-      return { content: [{ type: 'text', text: output }] };
+      return { content: [{ type: 'text', text: output }] };  // raw, not JSON-wrapped
     } catch (err) {
-      return { content: [{ type: 'text', text: `Import failed: ${err.message}` }], isError: true };
+      return mcpTextErr(`Import failed: ${err.message}`);
     }
-  }
+  })
 );
 
 async function main() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
+  if (process.env.MCP_TRANSPORT === 'http') {
+    // Lazy require: stdio is the default and most-used path. Hoisting these
+    // would force every stdio user (and the bundled stdio binary) to load
+    // Express + the streamable HTTP transport just to throw them away.
+    const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
+    const express = require('express');
+    const app = express();
+    app.use(express.json());
+    // No CSRF middleware: this endpoint speaks JSON-RPC, not HTML forms.
+    // It uses no cookies and relies on transport-level auth (bearer token /
+    // SigV4 / network policy) configured by the deployment, not browser
+    // origin trust.
+    app.post('/mcp', async (req, res) => {
+      // Long-lived containers behind a persistent-connection front-end
+      // (HTTP/2-style) don't always fire res.on('close') between requests.
+      // Disconnect any prior transport before attaching the new one —
+      // McpServer.close() is a no-op when nothing is connected.
+      await server.close();
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+      res.on('close', () => transport.close());
+      await server.connect(transport);
+      // Run the request inside an AsyncLocalStorage scope keyed on the
+      // inbound MCP session id (the deployment's HTTP front-end is
+      // expected to set the Mcp-Session-Id header on every request).
+      // Tool handlers and any helpers they call see this via
+      // currentSessionId() in lib/request-context (consumed by trace
+      // events and lib/aws-client.js's save logs).
+      const mcpSessionId = req.headers['mcp-session-id'] || null;
+      await runWithSession(mcpSessionId, () =>
+        transport.handleRequest(req, res, req.body),
+      );
+    });
+    app.get('/mcp', (req, res) => res.writeHead(405).end('Method Not Allowed'));
+    app.delete('/mcp', (req, res) => res.writeHead(405).end('Method Not Allowed'));
+    const port = process.env.PORT || 8000;
+    const host = process.env.HOST || '127.0.0.1';
+    app.listen(port, host, () => console.error(`MCP server listening on ${host}:${port}`));
+  } else {
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+  }
 }
 
-main().catch(err => {
-  console.error(err);
-  process.exit(1);
-});
+// Test-only export. Production callers ignore this. Lets tests inspect the
+// configured store and any other internals without forking the module.
+module.exports = { __test: { store: estimates, addEntries, exportWithLint, lintEstimate, buildEstimateHandler } };
+
+// Auto-start when invoked directly (`node mcp-server.js`) or when the
+// HTTP-mode env var is set. The latter handles bundled deployments where
+// a wrapper script requires the bundle from a separate entrypoint —
+// require.main !== module there, but MCP_TRANSPORT=http is the explicit
+// "run the server" signal. Tests don't set MCP_TRANSPORT, so they still
+// get a side-effect-free require().
+if (require.main === module || process.env.MCP_TRANSPORT === 'http') {
+  main().catch(err => {
+    console.error(err);
+    process.exit(1);
+  });
+}
