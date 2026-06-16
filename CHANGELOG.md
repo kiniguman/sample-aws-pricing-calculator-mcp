@@ -3,6 +3,11 @@
 All notable changes to the AWS Pricing Calculator MCP server are
 documented here.
 
+## [1.2.1] - 2026-06-16
+
+- Fixed bug NAT Gateway vs. regional NAT Gateway ambiguity
+- Added evaluation of `minValue`, `maxValue`, `allowDecimals`
+
 ## [1.2.0] - 2026-06-14
 
 - Fixed bugs [#11](https://github.com/aws-samples/sample-aws-pricing-calculator-mcp/issues/11), [#18](https://github.com/aws-samples/sample-aws-pricing-calculator-mcp/issues/18)
