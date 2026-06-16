@@ -6,13 +6,13 @@
 
 ## Key Features
 
-- **Build estimates from natural language** — agent constructs the estimate via MCP tools; the server saves it to AWS Pricing Calculator and returns a shareable URL.
-- **No AWS credentials required** — uses public, unauthenticated calculator.aws CDN endpoints.
-- **Live service definitions** — fetches the AWS Pricing Calculator manifest at runtime (~436 services).
-- **Verified Configs Catalog** — 16 per-service entries declaring the smallest config that produces a priced estimate, with documented gotchas.
-- **Lint refusal before save** — refuses estimates the calculator would render read-only or required-input, with actionable recovery hints.
-- **Import existing estimates** — download by URL or ID as JSON (for region swaps, modifications) or Markdown (for LLM analysis).
-- **Two transport modes** — stdio (default, for local clients like Claude Desktop, Kiro, Cursor) and optional HTTP (`MCP_TRANSPORT=http`) for hosted deployments.
+- **Build estimates from natural language** - agent constructs the estimate via MCP tools; the server saves it to AWS Pricing Calculator and returns a shareable URL.
+- **No AWS credentials required** - uses public, unauthenticated calculator.aws CDN endpoints.
+- **Live service definitions** - fetches the AWS Pricing Calculator manifest at runtime (~436 services).
+- **Verified Configs Catalog** - 16 per-service entries declaring the smallest config that produces a priced estimate, with documented gotchas.
+- **Lint refusal before save** - refuses estimates the calculator would render read-only or required-input, with actionable recovery hints.
+- **Import existing estimates** - download by URL or ID as JSON (for region swaps, modifications) or Markdown (for LLM analysis).
+- **Two transport modes** - stdio (default, for local clients like Claude Desktop, Kiro, Cursor) and optional HTTP (`MCP_TRANSPORT=http`) for hosted deployments.
 
 ## Example
 
