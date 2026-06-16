@@ -4,22 +4,12 @@
 
 [![Install in Kiro](https://img.shields.io/badge/Install-Kiro-9046FF?style=flat-square&logo=kiro)](https://kiro.dev/launch/mcp/add?name=aws-pricing-calculator-mcp-server&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22sample-aws-pricing-calculator-mcp%40latest%22%5D%7D) [![Install in Cursor](https://img.shields.io/badge/Install-Cursor-blue?style=flat-square&logo=cursor)](https://cursor.com/en/install-mcp?name=aws-pricing-calculator-mcp-server&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInNhbXBsZS1hd3MtcHJpY2luZy1jYWxjdWxhdG9yLW1jcEBsYXRlc3QiXX0%3D) [![Install in VS Code](https://img.shields.io/badge/Install-VS_Code-FF9900?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=aws-pricing-calculator-mcp-server&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22sample-aws-pricing-calculator-mcp%40latest%22%5D%7D)
 
-## What's new in 1.2.0
-
-- Two new MCP tools: `validate_estimate` (preflight without saving) and `build_estimate` (one-shot create + add + lint + save).
-- Static rehydration linter that refuses saves the calculator would render read-only.
-- Curated service catalog (16 verified entries) declaring the smallest config that produces a priced estimate.
-- Optional HTTP transport (`MCP_TRANSPORT=http`) for hosted deployments.
-- Pluggable estimate store with optional DynamoDB backend for stateless multi-replica deployments.
-
-See [CHANGELOG.md](CHANGELOG.md) for the full list, including behavior changes to existing tools (`add_service` validates and auto-corrects; `export_estimate` refuses to save when the linter predicts read-only).
-
 ## Key Features
 
 - **Build estimates from natural language** — agent constructs the estimate via MCP tools; the server saves it to AWS Pricing Calculator and returns a shareable URL.
 - **No AWS credentials required** — uses public, unauthenticated calculator.aws CDN endpoints.
 - **Live service definitions** — fetches the AWS Pricing Calculator manifest at runtime (~436 services).
-- **Curated catalog** — 16 verified per-service entries declaring the smallest config that produces a priced estimate, with documented gotchas.
+- **Verified Configs Catalog** — 16 per-service entries declaring the smallest config that produces a priced estimate, with documented gotchas.
 - **Lint refusal before save** — refuses estimates the calculator would render read-only or required-input, with actionable recovery hints.
 - **Import existing estimates** — download by URL or ID as JSON (for region swaps, modifications) or Markdown (for LLM analysis).
 - **Two transport modes** — stdio (default, for local clients like Claude Desktop, Kiro, Cursor) and optional HTTP (`MCP_TRANSPORT=http`) for hosted deployments.
@@ -80,10 +70,10 @@ Then point your client at the built bundle:
 | Tool | Description |
 |---|---|
 | `search_services` | Search AWS services by name or key. Supports comma-separated queries. |
-| `get_service_fields` | Get input field IDs, types, labels, valid options, and selector values for one or more services. For curated services, the response includes a `catalog` block (`minimalConfig`, required-field hints, traps). For deprecated parent shells (currently `amazonS3`), returns a `redirect_to_parent` envelope pointing at the verified child code. |
+| `get_service_fields` | Get input field IDs, types, labels, valid options, and selector values for one or more services. For curated services, the response includes a `catalog` block (`minimalConfig`, required-field hints, traps). For deprecated parent service codes (currently `amazonS3`), returns a `redirect_to_parent` status with `child_service_codes` listing the actual service codes to use instead. |
 | `create_estimate` | Create a new empty estimate. Returns an estimate ID. |
 | `add_service` | Add one or more services to an estimate. Validates field IDs and values against the live service definition (dropdowns, fileSize unit format, numeric/frequency types, region whitelist). Auto-corrects unambiguous mistakes (case mismatches, typos, number-to-string coercion) and returns a `corrections` array on the per-service result. Partial entries return a `partial: true` warning when required inputs are missing. |
-| `validate_estimate` | Dry-run preflight: builds the would-be saved payload and runs the rehydration linter, without calling the save API. Returns `{lint_verdict, next_step, lint_services, would_be_payload}`. Use to confirm an estimate would render before paying the round-trip. |
+| `validate_estimate` | Dry-run preflight: builds the would-be saved payload and runs a static check, without calling the save API. Returns `{lint_verdict, next_step, lint_services, would_be_payload}`. Use to confirm an estimate would render correctly before saving. |
 | `build_estimate` | One-shot create + add services + lint preflight + save. Returns the shareable URL on success, or a structured envelope identifying which services need field discovery before retry. |
 | `export_estimate` | Save the in-flight estimate to calculator.aws and return a shareable URL. Refuses with an actionable `next_step` if the static linter predicts the saved blob would rehydrate read-only. |
 | `import_estimate` | Download an existing estimate by URL or ID. Returns JSON (raw) or Markdown. |
@@ -115,8 +105,8 @@ lib/
   request-context.js       # Per-request session id propagation
 catalog/
   schema.json              # JSON Schema for catalog entries
-  services/                # Curated per-service entries (minimalConfig, traps, subServices)
-test/                      # node:test suite (424/429 pass; SKIP_NETWORK=1 for offline)
+  services/                # Verified configs catalog (minimalConfig, traps, subServices)
+test/                      # node:test suite
 eval/                      # Scenario-driven behavior eval (87 stdio + LLM scenarios)
 scripts/                   # Maintainer tools (catalog authoring, sweep, diagnostic)
 dist/                      # Build output: mcp-server.js bundle, aws-calculator.zip, bundle-contract.json
@@ -137,9 +127,11 @@ Produces:
 
 ## Tests
 
-```bash
-npm test
-```
+Three layers, no overlap:
+
+- **`npm test`** — node:test suite (424/429 pass with mocked I/O). Per-commit gate. Covers pure functions (validation, lint, surfaceability), payload construction, EC2 transforms, catalog schema.
+- **`npm run validate-catalog:cost`** — sweeps verified catalog entries against the live cost oracle. Catches stale URLs and pricing-engine drift.
+- **`python eval/run.py`** — 87 YAML scenarios (scripted MCP calls + LLM-driven). Each does a real save, then asserts on the saved blob (DOM-rendered cost, structural field equality, lint-must-pass). Run on demand (~1-2 min for stdio scenarios; LLM scenarios cost a few cents on Bedrock Haiku).
 
 424/429 tests pass with mocked I/O (5 skipped, network-dependent). Set `SKIP_NETWORK=1` for offline runs.
 
@@ -266,7 +258,7 @@ The IAM role running the server needs `dynamodb:GetItem`, `dynamodb:PutItem`, an
 - Each estimate is stored as a single JSON string under one item. Estimates that approach DynamoDB's 400 KB per-item cap (hundreds of services) will fail to write — use S3 or chunk-encoding if you need that.
 - The store is constructed once at process start. Switching backends requires restarting the process.
 
-## Catalog
+## Verified Configs Catalog
 
 The catalog (`catalog/services/*.json`) is a set of curated per-service entries. Each entry declares:
 
@@ -321,14 +313,6 @@ The 1.2.0 catalog content was audited along three independent axes before releas
 
 The trap audit and earns-place data are summarized here for transparency; the deterministic cost sweep is the load-bearing correctness gate.
 
-## Tests, lints, and evals
-
-Three layers, no overlap:
-
-- **`npm test`** — node:test suite (424/429 pass with mocked I/O). Per-commit gate. Covers pure functions (validation, lint, surfaceability), payload construction, EC2 transforms, catalog schema.
-- **`npm run validate-catalog:cost`** — sweeps verified catalog entries against the live cost oracle. Catches stale URLs and pricing-engine drift.
-- **`python eval/run.py`** — 87 YAML scenarios (scripted MCP calls + LLM-driven). Each does a real save, then asserts on the saved blob (DOM-rendered cost, structural field equality, lint-must-pass). Run on demand (~1-2 min for stdio scenarios; LLM scenarios cost a few cents on Bedrock Haiku).
-
 ## Known Issues
 
 - The CloudFront save/manifest APIs are undocumented and may change without notice.
@@ -366,19 +350,6 @@ The save and manifest endpoints are the same public, unauthenticated CloudFront 
 ### Reporting security issues
 
 See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for information on reporting security issues.
-
-## AWS MCP Servers Comparison: Pricing & Cost Management
-
-| | **AWS Pricing Calculator MCP (This)** | **[AWS Billing & Cost Management MCP](https://github.com/awslabs/mcp#-cost--operations)** | **[AWS Pricing MCP](https://github.com/awslabs/mcp#-cost--operations)** |
-|---|---|---|---|
-| **Purpose** | Build shareable cost estimates for new workloads | Analyze historical spend & optimize existing costs | Query real-time pricing data from Price List API |
-| **Data Source** | AWS Pricing Calculator (calculator.aws) | Cost Explorer, Cost Optimization Hub, Compute Optimizer, Savings Plans, Budgets, Storage Lens | AWS Price List Bulk API |
-| **Output** | Shareable calculator.aws URL with full estimate | Natural language cost insights, savings recommendations | Raw pricing data, cost reports (markdown/CSV) |
-| **Use Case** | "What will this new architecture cost?" | "Where am I overspending today?" | "What's the per-unit price of X?" |
-| **Scope** | Forward-looking estimates | Historical & current spend | Current catalog pricing |
-| **AWS Credentials** | Not required (uses public calculator API) | Required (reads your billing data) | Required (`pricing:*` permissions) |
-
-TL;DR: Use the Pricing Calculator MCP to build estimates for proposals, the Billing & Cost Management MCP to analyze and optimize existing spend, and the Pricing MCP for granular unit-price lookups and IaC cost analysis.
 
 ## Trace events
 
@@ -418,6 +389,19 @@ The `mcpSessionId` field has three states, useful for telling transports apart:
 - HTTP request with an `mcp-session-id` header → `"mcpSessionId": "<uuid>"`
 - HTTP request without the header → `"mcpSessionId": null`
 - Stdio transport → field omitted entirely
+
+## AWS MCP Servers Comparison: Pricing & Cost Management
+
+| | **AWS Pricing Calculator MCP (This)** | **[AWS Billing & Cost Management MCP](https://github.com/awslabs/mcp#-cost--operations)** | **[AWS Pricing MCP](https://github.com/awslabs/mcp#-cost--operations)** |
+|---|---|---|---|
+| **Purpose** | Build shareable cost estimates for new workloads | Analyze historical spend & optimize existing costs | Query real-time pricing data from Price List API |
+| **Data Source** | AWS Pricing Calculator (calculator.aws) | Cost Explorer, Cost Optimization Hub, Compute Optimizer, Savings Plans, Budgets, Storage Lens | AWS Price List Bulk API |
+| **Output** | Shareable calculator.aws URL with full estimate | Natural language cost insights, savings recommendations | Raw pricing data, cost reports (markdown/CSV) |
+| **Use Case** | "What will this new architecture cost?" | "Where am I overspending today?" | "What's the per-unit price of X?" |
+| **Scope** | Forward-looking estimates | Historical & current spend | Current catalog pricing |
+| **AWS Credentials** | Not required (uses public calculator API) | Required (reads your billing data) | Required (`pricing:*` permissions) |
+
+TL;DR: Use the Pricing Calculator MCP to build estimates for proposals, the Billing & Cost Management MCP to analyze and optimize existing spend, and the Pricing MCP for granular unit-price lookups and IaC cost analysis.
 
 ## Changelog
 

@@ -1,9 +1,11 @@
 # Changelog
 
 All notable changes to the AWS Pricing Calculator MCP server are
-documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
+documented here.
 
-## 1.2.0 — 2026-06-14
+## [1.2.0] - 2026-06-14
+
+- Fixed bugs [#11](https://github.com/aws-samples/sample-aws-pricing-calculator-mcp/issues/11), [#18](https://github.com/aws-samples/sample-aws-pricing-calculator-mcp/issues/18)
 
 ### Added
 
@@ -55,8 +57,7 @@ documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
   like `"RDS"` or `"S3"` now return a candidate list instead of
   silently grabbing an unrelated backup or archival service. A
   unique exact-name match still resolves; multiple partial matches
-  surface the candidates so the caller can pick. Contributed by
-  Marcel Törpe (`info@frumania.com`).
+  surface the candidates so the caller can pick.
 
 - **Scenario-driven eval harness** (`eval/`) — 87 YAML scenarios
   driving either scripted MCP calls (fast, AWS-free) or an
@@ -125,13 +126,8 @@ documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
   response also gains a `catalog` block with `minimalConfig`,
   required-field hints, and `traps[]`.
 
-### Removed
-
-- The BDD/Playwright `validation/` suite from PRs #5 and #6, replaced
-  by the static rehydration linter (`lib/can-rehydrate.js`) and the
-  scenario-driven eval harness (`eval/`). Thanks to the original
-  contributors of #5 and #6 — the BDD scenarios and field-mapping
-  work informed the predicate design.
+- Inspired by PRs [#5](https://github.com/aws-samples/sample-aws-pricing-calculator-mcp/pull/5) and[#6](https://github.com/aws-samples/sample-aws-pricing-calculator-mcp/pull/6), replaced the BDD/Playwright `validation/` suite by the static rehydration linter (`lib/can-rehydrate.js`) and the
+  scenario-driven eval harness (`eval/`).
 
 ### Known limitations
 
@@ -151,3 +147,40 @@ documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
   lint and trace events — they just don't get the
   magnitude-calibration role the catalog's `minimalConfig` plays for
   cataloged services.
+
+## [1.1.0] - 2026-05-14
+
+Overall improved validation and error handling
+
+- The LLM no longer needs to construct complete payload structures, just passes provided key-value pairs instead
+- Validation runs at add-time (not export-time), giving the LLM immediate feedback on errors.
+- Field ID validation with Levenshtein-based "Did you mean?" suggestions for typos.
+- Dropdown values: accepts labels (e.g. "Redis OSS") and resolves to option IDs automatically.
+- Region validation against known AWS region codes.
+- Default injection: fields with defaultValue/defaultDropDownItem in the service definition are auto-filled when not provided.
+- Disabled fields (isDisabled: true) are now filtered from extractInputFields — the LLM never sees read-only fields.
+- Improved service key resolution by display name: add_service now accepts service names (e.g. "AWS Lambda", "DynamoDB on-demand") in addition to exact keys.
+- Added optional HTTP transport (`MCP_TRANSPORT=http`) for hosted deployments (multi-replica HTTP, container runtimes). Defaults to stdio so existing MCP clients are unaffected.
+- Fixed HTTP transport reconnection on persistent connections — calls `server.close()` between requests so the second tool call no longer fails with "Already connected to a transport" on long-lived containers.
+- Added pluggable estimate store (`ESTIMATES_STORE` env var: `memory` default or `dynamodb`). Enables stateless deployments where requests may land on different processes. AWS SDK is an optional peer dependency, externalized at build time so the default bundle size is unchanged.
+- Added `EstimateBuilder.toJSON()` / `EstimateBuilder.fromJSON()` for serialized round-trip through any store.
+- Refactored validation helpers into `lib/validation.js` so unit tests exercise the shipping code instead of a copy.
+- Added end-to-end roundtrip integration tests (build → save → fetch → field-by-field compare) for Lambda, grouped EC2, and the SNS subService write path.
+- Test count grew from 70 to 95.
+
+## [1.0.2] - 2026-05-13
+- Added to npm https://www.npmjs.com/package/sample-aws-pricing-calculator-mcp
+- Added quick install button (Kiro, Cursor, VS Code)
+
+## [1.0.1] - 2026-05-13
+- Fixed Bug: Proper support for nested Structures e.g. Elasticache, RDS, Bedrock, ALB
+- Fixed Bug: EC2/EBS iops, throughput not recognized
+- Enriched field metadata with allowed values, also validates upon submission - yet dependencies are not resolved
+- Costs are now displayed on initial load - however pressing 'Update estimate' is recommended
+- Supports importing/reading estimates
+- Dependencies updated
+- Removed dead code
+- Version info added (get_server_info)
+
+## [1.0.0] - 2026-04-30
+- Initial Release
