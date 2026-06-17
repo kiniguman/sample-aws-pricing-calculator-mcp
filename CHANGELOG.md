@@ -3,6 +3,12 @@
 All notable changes to the AWS Pricing Calculator MCP server are
 documented here.
 
+## [1.2.2] - 2026-06-17
+
+- Fixed bug in `amazonElasticBlockStore` using wrong format for throughput (new catalog entry)
+- Fixed `aWSDataTransfer` using wrong format (new catalog entry)
+- (Experimental) Support for AWS European Sovereign Cloud https://pricing.calculator.aws.eu/
+
 ## [1.2.1] - 2026-06-16
 
 - Fixed bug NAT Gateway vs. regional NAT Gateway ambiguity

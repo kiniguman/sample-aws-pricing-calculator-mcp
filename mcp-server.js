@@ -97,7 +97,7 @@ server.tool(
   desc.SEARCH_SERVICES,
   {
     query: z.string().describe('One or more search terms, comma-separated (e.g. "Lambda, S3, Amazon Personalize, API Gateway, CloudWatch")'),
-    partition: z.string().optional().describe('AWS partition to search in (default: "aws"). Valid values: "aws", "aws-iso", "aws-iso-b"'),
+    partition: z.string().optional().describe('AWS partition to search in (default: "aws"). Valid values: "aws", "aws-iso", "aws-iso-b", "aws-eusc"'),
   },
   traceTool('search_services', async ({ query, partition }) => {
     const p = partition || 'aws';
@@ -118,7 +118,7 @@ server.tool(
   desc.GET_SERVICE_FIELDS,
   {
     service: z.string().describe('One or more service keys, comma-separated (e.g. "aWSLambda, amazonS3, stepFunctionStandard, amazonApiGateway")'),
-    partition: z.string().optional().describe('AWS partition to fetch from (default: "aws"). Valid values: "aws", "aws-iso", "aws-iso-b"'),
+    partition: z.string().optional().describe('AWS partition to fetch from (default: "aws"). Valid values: "aws", "aws-iso", "aws-iso-b", "aws-eusc"'),
   },
   traceTool('get_service_fields', async ({ service, partition }) => {
     const p = partition || 'aws';
@@ -167,7 +167,7 @@ server.tool(
   desc.CREATE_ESTIMATE,
   {
     name: z.string().optional().describe('Name for the estimate (default: "My Estimate")'),
-    partition: z.string().optional().describe('AWS partition for this estimate (default: "aws"). Valid values: "aws", "aws-iso", "aws-iso-b"'),
+    partition: z.string().optional().describe('AWS partition for this estimate (default: "aws"). Valid values: "aws", "aws-iso", "aws-iso-b", "aws-eusc"'),
   },
   traceTool('create_estimate', async ({ name, partition }) => {
     const partErr = checkPartition(partition);
@@ -340,7 +340,7 @@ server.tool(
   {
     services: z.string().describe('JSON array of service entries. Same shape as add_service. Each entry: {"service":"serviceKey","instance":"optional","group":"optional","config":{...with region, description, and field values}}.'),
     name: z.string().optional().describe('Estimate name (default: "My Estimate")'),
-    partition: z.string().optional().describe('AWS partition (default: "aws"). Valid values: "aws", "aws-iso", "aws-iso-b"'),
+    partition: z.string().optional().describe('AWS partition (default: "aws"). Valid values: "aws", "aws-iso", "aws-iso-b", "aws-eusc", "aws-eusc"'),
   },
   traceTool('build_estimate', buildEstimateHandler)
 );
@@ -355,11 +355,13 @@ server.tool(
   traceTool('import_estimate', async ({ estimate_id, format }) => {
     // Extract ID from URL if needed
     let id = estimate_id;
+    let partition;
     const urlMatch = estimate_id.match(/[?&]id=([a-f0-9]+)/);
     if (urlMatch) id = urlMatch[1];
+    if (estimate_id.includes('pricing.calculator.aws.eu')) partition = 'aws-eusc';
 
     try {
-      const data = await fetchEstimate(id);
+      const data = await fetchEstimate(id, { partition });
       const output = (format === 'markdown')
         ? estimateToMarkdown(data)
         : JSON.stringify(data, null, 2);
