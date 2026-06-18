@@ -9,7 +9,7 @@
 - **Build estimates from natural language** - agent constructs the estimate via MCP tools; the server saves it to AWS Pricing Calculator and returns a shareable URL.
 - **No AWS credentials required** - uses public, unauthenticated calculator.aws CDN endpoints.
 - **Live service definitions** - fetches the AWS Pricing Calculator manifest at runtime (~436 services).
-- **Verified Configs Catalog** - 16 per-service entries declaring the smallest config that produces a priced estimate, with documented gotchas.
+- **Verified Configs Catalog** - 18 per-service entries declaring the smallest config that produces a priced estimate, with documented gotchas.
 - **Lint refusal before save** - refuses estimates the calculator would render read-only or required-input, with actionable recovery hints.
 - **Import existing estimates** - download by URL or ID as JSON (for region swaps, modifications) or Markdown (for LLM analysis).
 - **Two transport modes** - stdio (default, for local clients like Claude Desktop, Kiro, Cursor) and optional HTTP (`MCP_TRANSPORT=http`) for hosted deployments.
@@ -182,10 +182,11 @@ EC2 uses a custom config transform (`lib/ec2.js`) that converts agent-friendly f
 
 ### Partition support
 
-The server supports three AWS partitions:
+The server supports the following AWS partitions:
 - `aws` — standard commercial regions
 - `aws-iso` — US ISO East/West
 - `aws-iso-b` — US ISOB East
+- `aws-eusc` (Experimental) AWS European Sovereign Cloud
 
 ### Export to calculator.aws
 
@@ -274,7 +275,7 @@ The catalog (`catalog/services/*.json`) is a set of curated per-service entries.
 
 | Status | Count | Meaning |
 |---|---|---|
-| `verified` | 16 | Reverified end-to-end: a fresh save from `minimalConfig` renders non-zero cost in calculator.aws |
+| `verified` | 18 | Reverified end-to-end: a fresh save from `minimalConfig` renders non-zero cost in calculator.aws |
 | `partial` | 1 | Authored but not fully verified |
 | **Total entries** | **17** | Out of ~436 services in the manifest |
 
@@ -299,7 +300,7 @@ The cost-oracle sweep saves a fresh estimate from each verified entry's `minimal
 
 The 1.2.0 catalog content was audited along three independent axes before release.
 
-**Cost-rendering correctness (deterministic).** The `validate-catalog:cost` sweep saves each of the 16 verified entries' `minimalConfig` and confirms a non-zero rendered cost via the DOM oracle. Result: **16/16 entries render priced cost** (e.g. Lambda $699.80/mo, RDS PostgreSQL $175.75/mo, EC2 $70.08/mo).
+**Cost-rendering correctness (deterministic).** The `validate-catalog:cost` sweep saves each of the verified entries' `minimalConfig` and confirms a non-zero rendered cost via the DOM oracle. Result: **entries render priced cost** (e.g. Lambda $699.80/mo, RDS PostgreSQL $175.75/mo, EC2 $70.08/mo).
 
 **Trap content audit (manifest cross-check + LLM cold-eye).** Each `traps[]` claim was checked against the live manifest data and, where applicable, the saved blob of the corresponding `verifiedEstimateId`. Result across the 60 shipped traps: **0 hallucinated claims**. Every trap was then classified by the type of utility it provides to a runtime agent — falling roughly into:
 
@@ -321,7 +322,7 @@ The trap audit and earns-place data are summarized here for transparency; the de
 - With the default `memory` store, in-flight estimates don't persist across restarts. Use `ESTIMATES_STORE=dynamodb` for stateless or multi-replica deployments.
 - No local cost calculation — pricing is computed by AWS when viewing the shareable link. Press **Update estimate** in the calculator UI to reflect the latest pricing.
 - Only `https://calculator.aws/` is supported.
-- Catalog coverage is partial (16 verified entries against ~436 manifest services). Uncatalogued services still benefit from the lint and trace events; they just don't get the magnitude-calibration role the catalog plays.
+- Catalog coverage is partial (verified entries against ~436 manifest services). Uncatalogued services still benefit from the lint and trace events; they just don't get the magnitude-calibration role the catalog plays.
 
 ## Security
 

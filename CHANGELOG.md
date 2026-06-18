@@ -8,6 +8,8 @@ documented here.
 - Fixed bug in `amazonElasticBlockStore` using wrong format for throughput (new catalog entry)
 - Fixed `aWSDataTransfer` using wrong format (new catalog entry)
 - (Experimental) Support for AWS European Sovereign Cloud https://pricing.calculator.aws.eu/
+- Added a hint to batch larger estimates (use `add_service` instead of `build_estimate`) - inspired by [PR17](https://github.com/aws-samples/sample-aws-pricing-calculator-mcp/pull/17)
+- Added support for nested groups - as per [PR15](https://github.com/aws-samples/sample-aws-pricing-calculator-mcp/pull/15)
 
 ## [1.2.1] - 2026-06-16
 
