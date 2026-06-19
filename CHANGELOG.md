@@ -3,6 +3,10 @@
 All notable changes to the AWS Pricing Calculator MCP server are
 documented here.
 
+## [1.2.3] - 2026-06-19
+
+- Improved hint for EC2 pricing strategies & EC2 data transfer
+
 ## [1.2.2] - 2026-06-17
 
 - Fixed bug in `amazonElasticBlockStore` using wrong format for throughput (new catalog entry)
