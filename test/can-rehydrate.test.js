@@ -2242,3 +2242,278 @@ describe('canRehydrate — column-form-unremapped-value', () => {
       `no remap block → no-op; got ${JSON.stringify(fails)}`);
   });
 });
+
+describe('canRehydrate — column-form-tuple-valid', () => {
+  // WorkSpaces Core has an Operating-System × License constraint that
+  // nothing else enforces. The only canonical (OS-selector, License)
+  // pairs are "Any" + "Bring Your Own License" and "Windows" + "Included".
+  // A saved row with "Windows" + BYOL is INVALID but fails silently and
+  // DIFFERENTLY per region (53% overcharge in one region, $0 in another).
+  //
+  // The authoritative source of truth for valid tuples is the
+  // calculator's own primary-selector-aggregations.json per service+
+  // region — every valid full selector tuple. A saved row whose tuple
+  // is NOT in that set is defective even if it happens to render a price.
+  //
+  // Saved cells store REMAPPED values (e.g. "WorkSpaces Core Windows"
+  // for selector "Windows"); the aggregation tuples use SELECTOR values.
+  // The predicate reverse-maps each cell value (stored → selector) using
+  // the component's remap.keyValue before comparing.
+  //
+  // aggregations is passed in as a Map keyed by serviceCode → array of
+  // valid selector-tuple objects. Absent/undefined → no-op (offline
+  // safety, mirrors the regionList side-channel).
+
+  const workSpacesCoreDef = {
+    serviceCode: 'workSpacesCore',
+    templates: [{
+      id: 'workSpacesCoreTemplate',
+      cards: [{
+        inputSection: {
+          components: [
+            {
+              id: 'columnFormIPM_1',
+              type: 'input',
+              subType: 'columnFormIPM',
+              label: 'WorkSpaces',
+              remap: {
+                keyValue: {
+                  AlwaysOn: 'Monthly',
+                  AutoStop: 'Hourly',
+                  Windows: 'WorkSpaces Core Windows',
+                  Any: 'WorkSpaces Core Windows BYOL',
+                },
+              },
+            },
+          ],
+        },
+      }],
+    }],
+  };
+  const PER_SVC = new Map([['workSpacesCore', workSpacesCoreDef]]);
+
+  // Valid tuples in SELECTOR terms: the only two canonical combinations.
+  const validTuples = [
+    { 'Operating System': 'Any', 'License': 'Bring Your Own License' },
+    { 'Operating System': 'Windows', 'License': 'Included' },
+  ];
+
+  it('(a) fires read-only when a row reverse-maps to an invalid tuple (Windows + BYOL)', () => {
+    const blob = {
+      services: { s1: {
+        serviceCode: 'workSpacesCore',
+        region: 'il-central-1',
+        regionName: 'Middle East (Tel Aviv)',
+        estimateFor: 'workSpacesCoreTemplate',
+        calculationComponents: {
+          columnFormIPM_1: {
+            value: [
+              {
+                // Stored "WorkSpaces Core Windows" reverse-maps to selector
+                // "Windows"; License "Bring Your Own License" → Windows+BYOL
+                // is NOT a valid tuple.
+                'Operating System': { value: 'WorkSpaces Core Windows' },
+                'License': { value: 'Bring Your Own License' },
+              },
+            ],
+          },
+        },
+      } },
+    };
+    const aggregations = new Map([['workSpacesCore', validTuples]]);
+    const r = canRehydrate({
+      savedBlob: blob, manifest: new Map(),
+      perServiceDefinitions: PER_SVC, aggregations,
+    });
+    assert.equal(r.status, 'read-only',
+      `expected read-only; got ${r.status}, failures: ${JSON.stringify(r.services[0]?.failures)}`);
+    const fails = r.services[0].failures.filter(f => f.predicate === 'column-form-tuple-invalid');
+    assert.equal(fails.length, 1);
+    assert.equal(fails[0].context.serviceCode, 'workSpacesCore');
+    assert.equal(fails[0].context.observedTuple['Operating System'], 'Windows');
+    assert.equal(fails[0].context.observedTuple['License'], 'Bring Your Own License');
+    assert.match(fails[0].message, /not a valid/i);
+  });
+
+  it('(b) does NOT fire when a row reverse-maps to a valid tuple (Any + BYOL)', () => {
+    const blob = {
+      services: { s1: {
+        serviceCode: 'workSpacesCore',
+        region: 'il-central-1',
+        regionName: 'Middle East (Tel Aviv)',
+        estimateFor: 'workSpacesCoreTemplate',
+        calculationComponents: {
+          columnFormIPM_1: {
+            value: [
+              {
+                // Stored "WorkSpaces Core Windows BYOL" reverse-maps to
+                // selector "Any"; Any+BYOL IS a valid tuple.
+                'Operating System': { value: 'WorkSpaces Core Windows BYOL' },
+                'License': { value: 'Bring Your Own License' },
+              },
+            ],
+          },
+        },
+      } },
+    };
+    const aggregations = new Map([['workSpacesCore', validTuples]]);
+    const r = canRehydrate({
+      savedBlob: blob, manifest: new Map(),
+      perServiceDefinitions: PER_SVC, aggregations,
+    });
+    const fails = (r.services[0]?.failures || []).filter(f => f.predicate === 'column-form-tuple-invalid');
+    assert.equal(fails.length, 0,
+      `valid tuple must not fire; got ${JSON.stringify(fails)}`);
+  });
+
+  it('(c) is a no-op when aggregations Map is absent (offline safety)', () => {
+    const blob = {
+      services: { s1: {
+        serviceCode: 'workSpacesCore',
+        region: 'il-central-1',
+        regionName: 'Middle East (Tel Aviv)',
+        estimateFor: 'workSpacesCoreTemplate',
+        calculationComponents: {
+          columnFormIPM_1: {
+            value: [
+              {
+                'Operating System': { value: 'WorkSpaces Core Windows' },  // invalid tuple
+                'License': { value: 'Bring Your Own License' },
+              },
+            ],
+          },
+        },
+      } },
+    };
+    // No aggregations passed — predicate must skip cleanly.
+    const r = canRehydrate({
+      savedBlob: blob, manifest: new Map(),
+      perServiceDefinitions: PER_SVC,
+    });
+    const fails = (r.services[0]?.failures || []).filter(f => f.predicate === 'column-form-tuple-invalid');
+    assert.equal(fails.length, 0,
+      `absent aggregations → no-op; got ${JSON.stringify(fails)}`);
+    assert.equal(r.status, 'editable',
+      `absent aggregations should leave status editable; got ${r.status}`);
+  });
+
+  it('(c2) is a no-op when aggregations Map has no entry for this service', () => {
+    const blob = {
+      services: { s1: {
+        serviceCode: 'workSpacesCore',
+        region: 'il-central-1',
+        regionName: 'Middle East (Tel Aviv)',
+        estimateFor: 'workSpacesCoreTemplate',
+        calculationComponents: {
+          columnFormIPM_1: {
+            value: [
+              {
+                'Operating System': { value: 'WorkSpaces Core Windows' },  // invalid tuple
+                'License': { value: 'Bring Your Own License' },
+              },
+            ],
+          },
+        },
+      } },
+    };
+    const aggregations = new Map([['someOtherService', validTuples]]);
+    const r = canRehydrate({
+      savedBlob: blob, manifest: new Map(),
+      perServiceDefinitions: PER_SVC, aggregations,
+    });
+    const fails = (r.services[0]?.failures || []).filter(f => f.predicate === 'column-form-tuple-invalid');
+    assert.equal(fails.length, 0,
+      `service absent from aggregations → no-op; got ${JSON.stringify(fails)}`);
+  });
+
+  it('(d) is a no-op for a columnFormIPM with no remap block', () => {
+    const noRemapDef = {
+      serviceCode: 'svc',
+      templates: [{
+        id: 'tpl',
+        cards: [{
+          inputSection: {
+            components: [
+              { id: 'columnFormIPM_1', type: 'input', subType: 'columnFormIPM', label: 'Nodes' },
+            ],
+          },
+        }],
+      }],
+    };
+    const blob = {
+      services: { s1: {
+        serviceCode: 'svc',
+        region: 'il-central-1',
+        regionName: 'Middle East (Tel Aviv)',
+        estimateFor: 'tpl',
+        calculationComponents: {
+          columnFormIPM_1: { value: [{ 'Operating System': { value: 'Whatever' } }] },
+        },
+      } },
+    };
+    const aggregations = new Map([['svc', validTuples]]);
+    const r = canRehydrate({
+      savedBlob: blob, manifest: new Map(),
+      perServiceDefinitions: new Map([['svc', noRemapDef]]), aggregations,
+    });
+    const fails = (r.services[0]?.failures || []).filter(f => f.predicate === 'column-form-tuple-invalid');
+    assert.equal(fails.length, 0,
+      `no remap block → no-op; got ${JSON.stringify(fails)}`);
+  });
+
+  it('(d2) is a no-op for a non-columnFormIPM service', () => {
+    const lambdaDef = {
+      serviceCode: 'aWSLambda',
+      templates: [{ id: 'lambda-template-1' }],
+    };
+    const blob = {
+      services: { s1: {
+        serviceCode: 'aWSLambda',
+        estimateFor: 'lambda-template-1',
+        calculationComponents: {},
+      } },
+    };
+    const aggregations = new Map([['aWSLambda', validTuples]]);
+    const r = canRehydrate({
+      savedBlob: blob, manifest: new Map(),
+      perServiceDefinitions: new Map([['aWSLambda', lambdaDef]]), aggregations,
+    });
+    const fails = (r.services[0]?.failures || []).filter(f => f.predicate === 'column-form-tuple-invalid');
+    assert.equal(fails.length, 0);
+    assert.equal(r.status, 'editable');
+  });
+
+  it('intersects only on keys the aggregation tuples carry (ignores untracked columns)', () => {
+    // The saved row carries extra columns (Running Mode) that the
+    // aggregation tuple set may not enumerate. The predicate must
+    // compare only on the shared keys present in the aggregation tuples
+    // — a valid OS/License tuple should pass even with extra cells.
+    const blob = {
+      services: { s1: {
+        serviceCode: 'workSpacesCore',
+        region: 'il-central-1',
+        regionName: 'Middle East (Tel Aviv)',
+        estimateFor: 'workSpacesCoreTemplate',
+        calculationComponents: {
+          columnFormIPM_1: {
+            value: [
+              {
+                'Operating System': { value: 'WorkSpaces Core Windows BYOL' },  // → Any
+                'License': { value: 'Bring Your Own License' },
+                'Running Mode': { value: { selectedId: 'Monthly' } },  // untracked by agg
+              },
+            ],
+          },
+        },
+      } },
+    };
+    const aggregations = new Map([['workSpacesCore', validTuples]]);
+    const r = canRehydrate({
+      savedBlob: blob, manifest: new Map(),
+      perServiceDefinitions: PER_SVC, aggregations,
+    });
+    const fails = (r.services[0]?.failures || []).filter(f => f.predicate === 'column-form-tuple-invalid');
+    assert.equal(fails.length, 0,
+      `valid OS/License tuple must pass even with untracked extra columns; got ${JSON.stringify(fails)}`);
+  });
+});

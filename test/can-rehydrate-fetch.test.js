@@ -115,6 +115,95 @@ describe('canRehydrateFetch', () => {
     assert.deepEqual(fetched, ['aWSLambda']);
   });
 
+  it('wires selector aggregations for a columnFormIPM SUB-SERVICE using region CODE (no regionName)', async () => {
+    // Reality: columnFormIPM services like workSpacesCore are sub-services
+    // nested under a parent envelope. The sub-service node carries `region`
+    // (the CODE) but NO `regionName` (only the parent envelope has that).
+    // The aggregation wiring must resolve from the region CODE, otherwise it
+    // skips the sub-service and the tuple predicate silently no-ops.
+    const fakeManifest = new Map([
+      ['amazonWorkSpaces', { key: 'amazonWorkSpaces', subType: 'subServiceSelector', templates: ['workSpacesCore'] }],
+      ['workSpacesCore', { key: 'workSpacesCore', subType: 'subService' }],
+    ]);
+    const parentDef = {
+      serviceCode: 'amazonWorkSpaces',
+      templates: ['workSpacesCore'],
+      templateId: 'amazonWorkSpacesGroup',
+      mappingDefinitions: { children: ['workSpacesCore'] },
+    };
+    const childDef = {
+      serviceCode: 'workSpacesCore',
+      templates: [{
+        id: 'workSpacesCoreTemplate',
+        cards: [{ inputSection: { components: [{
+          id: 'columnFormIPM_1',
+          type: 'input',
+          subType: 'columnFormIPM',
+          mappingDefinitionName: 'wsCoreMap',
+          label: 'WorkSpaces',
+          remap: { keyValue: { Windows: 'WorkSpaces Core Windows', Any: 'WorkSpaces Core Windows BYOL' } },
+        }] } }],
+      }],
+    };
+    const validTuples = [
+      { 'Operating System': 'Any', 'License': 'Bring Your Own License' },
+      { 'Operating System': 'Windows', 'License': 'Included' },
+    ];
+    const aggCalls = [];
+    const fakeAwsClient = {
+      loadManifest: mock.fn(async () => fakeManifest),
+      fetchServiceDefinition: mock.fn(async (_m, code) => {
+        if (code === 'amazonWorkSpaces') return parentDef;
+        if (code === 'workSpacesCore') return childDef;
+        return null;
+      }),
+      // Assert the wiring hands us a region CODE, not undefined.
+      loadSelectorAggregations: mock.fn(async (_def, _field, region) => {
+        aggCalls.push(region);
+        return validTuples;
+      }),
+    };
+    require.cache[require.resolve('../lib/aws-client')] = { exports: fakeAwsClient };
+
+    canRehydrateFetch = require('../lib/can-rehydrate-fetch').canRehydrateFetch;
+
+    const r = await canRehydrateFetch({
+      savedBlob: {
+        services: {
+          s1: {
+            serviceCode: 'amazonWorkSpaces',
+            estimateFor: 'amazonWorkSpacesGroup',
+            region: 'eu-west-1',
+            regionName: 'Europe (Ireland)',
+            subServices: [{
+              serviceCode: 'workSpacesCore',
+              estimateFor: 'workSpacesCoreTemplate',
+              region: 'eu-west-1',
+              // NOTE: no regionName — the sub-service node lacks it.
+              calculationComponents: {
+                columnFormIPM_1: { value: [{
+                  'Operating System': { value: 'WorkSpaces Core Windows' },  // → Windows
+                  'License': { value: 'Bring Your Own License' },            // Windows+BYOL: invalid
+                }] },
+              },
+            }],
+          },
+        },
+      },
+    });
+
+    // The wiring must have called loadSelectorAggregations with the region CODE.
+    assert.deepEqual(aggCalls, ['eu-west-1'],
+      `aggregations must be fetched using the sub-service region CODE; got ${JSON.stringify(aggCalls)}`);
+    // And the tuple predicate must fire read-only on the invalid Windows+BYOL row.
+    assert.equal(r.status, 'read-only',
+      `invalid sub-service tuple must drive read-only; got ${r.status}`);
+    const childResult = r.services.find(s => s.serviceCode === 'workSpacesCore');
+    const fails = (childResult?.failures || []).filter(f => f.predicate === 'column-form-tuple-invalid');
+    assert.equal(fails.length, 1,
+      `tuple predicate must fire on the sub-service; got ${JSON.stringify(childResult?.failures)}`);
+  });
+
   it('throws TypeError when savedBlob is null/undefined', async () => {
     canRehydrateFetch = require('../lib/can-rehydrate-fetch').canRehydrateFetch;
     await assert.rejects(
