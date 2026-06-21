@@ -1,0 +1,71 @@
+id: workspaces-core-minimal
+description: |
+  Amazon WorkSpaces Core — 450 BYOL Power bundles, AlwaysOn, in
+  il-central-1. Regression lock for the columnFormIPM remap.keyValue
+  fix.
+
+  The agent passes SELECTOR values for the columnFormIPM cells —
+  the human-facing option labels the service def's selectors expose:
+  'Operating System' = 'Any', 'License' = 'Bring Your Own License',
+  'Bundle Description' = 'Power (4 vCPU, 16GB RAM)', and the
+  'Running Mode' utilization cell with selectedId 'AlwaysOn'. These
+  are NOT the values the pricing engine stores. The service def
+  carries a columnFormIPM remap.keyValue table; the builder applies
+  it to translate each selector value to its STORED form (e.g.
+  'Any' + BYOL → 'WorkSpaces Core Windows BYOL', AlwaysOn →
+  'Monthly').
+
+  Before the fix the builder saved the raw selector values. Those
+  don't match any pricing tuple, so the rehydrated estimate came
+  back READ-ONLY and rendered $0. After the fix the remap runs and
+  the same selector input prices ~$23,328/mo.
+
+  Two shape points this scenario also encodes:
+  - The utilization cell is keyed by its selectorId 'Running Mode'
+    (this row has a selectorId), NOT the literal 'undefined' slot
+    used by RDS-style rows that lack one.
+  - The cell value is { unit: '730', selectedId: 'AlwaysOn' } — the
+    selectedId is a selector value that the remap rewrites to
+    'Monthly' before save.
+calls:
+  - tool: create_estimate
+    args:
+      name: eval-workspaces-core-minimal
+  - tool: add_service
+    args:
+      estimate_id: ${estimate_id}
+      services: |
+        [{"service":"workSpacesCore","group":"Core","config":{
+          "region":"il-central-1",
+          "description":"450 WorkSpaces Core BYOL Power AlwaysOn",
+          "columnFormIPM":{"value":[{
+            "Operating System":{"value":"Any"},
+            "License":{"value":"Bring Your Own License"},
+            "Bundle Description":{"value":"Power (4 vCPU, 16GB RAM)"},
+            "rootVolume":{"value":"80 GB"},
+            "userVolume":{"value":"50 GB"},
+            "Running Mode":{"value":{"unit":"730","selectedId":"AlwaysOn"}},
+            "Number of WorkSpaces":{"value":"450"}
+          }]},
+          "numberPicker":{"value":"0"}
+        }}]
+  - tool: validate_estimate
+    args:
+      estimate_id: ${estimate_id}
+  - tool: export_estimate
+    args:
+      estimate_id: ${estimate_id}
+expectations:
+  - predicate: save_succeeded
+  - predicate: no_tool_errors
+  - predicate: lint_verdict
+    expected: editable
+  - predicate: trajectory_includes
+    sequence: [create_estimate, add_service, validate_estimate, export_estimate]
+    strict: true
+  # 450 BYOL Power AlwaysOn prices ~$23,328/mo. Floor of $1000
+  # cleanly separates the post-fix priced estimate from the pre-fix
+  # $0 read-only regression (un-remapped selector values save an
+  # unpriceable blob), without being brittle to rate changes.
+  - predicate: estimate_renders_cost
+    min_monthly_usd: 1000.0

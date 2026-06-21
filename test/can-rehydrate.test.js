@@ -2079,3 +2079,166 @@ describe('canRehydrate — tenancy-pricing-mismatch', () => {
       'absent fields are caught by other predicates; no spurious mismatch flag');
   });
 });
+
+describe('canRehydrate — column-form-unremapped-value', () => {
+  // columnFormIPM cells must store REMAPPED (target) values, not raw
+  // selector (UI) values. The service definition's columnFormIPM carries
+  // remap.keyValue mapping selector → stored value. The calculator writes
+  // the stored value; the pricing engine reads it back. A saved blob that
+  // still holds a raw selector value (a KEY in keyValue) can't be resolved
+  // by the pricing engine — the service rehydrates READ-ONLY at $0.
+  //
+  // The builder now applies the remap (verified). This predicate is
+  // defense-in-depth for paths that bypass the builder: import_estimate,
+  // re-validation of externally-produced blobs, future services. It fires
+  // ONLY on the unambiguous bug signal (cell value is a KEY but not also a
+  // VALUE in keyValue) and never false-positives on a correctly-remapped
+  // blob.
+
+  // workSpacesCore-style remap: selector → stored.
+  const workSpacesCoreDef = {
+    serviceCode: 'workSpacesCore',
+    templates: [{
+      id: 'workSpacesCoreTemplate',
+      cards: [{
+        inputSection: {
+          components: [
+            {
+              id: 'columnFormIPM_1',
+              type: 'input',
+              subType: 'columnFormIPM',
+              label: 'WorkSpaces',
+              remap: {
+                keyValue: {
+                  AlwaysOn: 'Monthly',
+                  AutoStop: 'Hourly',
+                  Windows: 'WorkSpaces Core Windows',
+                  Any: 'WorkSpaces Core Windows BYOL',
+                },
+              },
+            },
+          ],
+        },
+      }],
+    }],
+  };
+  const PER_SVC = new Map([['workSpacesCore', workSpacesCoreDef]]);
+
+  it('fires read-only when a plain cell holds an un-remapped selector value (a KEY)', () => {
+    const blob = {
+      services: { s1: {
+        serviceCode: 'workSpacesCore',
+        estimateFor: 'workSpacesCoreTemplate',
+        calculationComponents: {
+          columnFormIPM_1: {
+            value: [
+              { 'Operating System': { value: 'Windows' } },  // raw selector KEY — broken
+            ],
+          },
+        },
+      } },
+    };
+    const r = canRehydrate({ savedBlob: blob, manifest: new Map(), perServiceDefinitions: PER_SVC });
+    assert.equal(r.status, 'read-only',
+      `expected read-only; got ${r.status}, failures: ${JSON.stringify(r.services[0]?.failures)}`);
+    const fails = r.services[0].failures.filter(f => f.predicate === 'column-form-unremapped-value');
+    assert.equal(fails.length, 1);
+    assert.equal(fails[0].context.componentId, 'columnFormIPM_1');
+    assert.equal(fails[0].context.cellKey, 'Operating System');
+    assert.equal(fails[0].context.observed, 'Windows');
+    assert.equal(fails[0].context.expectedRemapped, 'WorkSpaces Core Windows');
+  });
+
+  it('does NOT fire when a plain cell holds the correctly-remapped value', () => {
+    const blob = {
+      services: { s1: {
+        serviceCode: 'workSpacesCore',
+        estimateFor: 'workSpacesCoreTemplate',
+        calculationComponents: {
+          columnFormIPM_1: {
+            value: [
+              { 'Operating System': { value: 'WorkSpaces Core Windows' } },  // mapped — correct
+            ],
+          },
+        },
+      } },
+    };
+    const r = canRehydrate({ savedBlob: blob, manifest: new Map(), perServiceDefinitions: PER_SVC });
+    const fails = (r.services[0]?.failures || []).filter(f => f.predicate === 'column-form-unremapped-value');
+    assert.equal(fails.length, 0,
+      `correctly-remapped value must not fire; got ${JSON.stringify(fails)}`);
+  });
+
+  it('fires on a utilization cell whose selectedId is an un-remapped KEY', () => {
+    const blob = {
+      services: { s1: {
+        serviceCode: 'workSpacesCore',
+        estimateFor: 'workSpacesCoreTemplate',
+        calculationComponents: {
+          columnFormIPM_1: {
+            value: [
+              { 'Running Mode': { value: { selectedId: 'AlwaysOn' } } },  // raw selector KEY — broken
+            ],
+          },
+        },
+      } },
+    };
+    const r = canRehydrate({ savedBlob: blob, manifest: new Map(), perServiceDefinitions: PER_SVC });
+    const fails = r.services[0].failures.filter(f => f.predicate === 'column-form-unremapped-value');
+    assert.equal(fails.length, 1);
+    assert.equal(fails[0].context.cellKey, 'Running Mode');
+    assert.equal(fails[0].context.observed, 'AlwaysOn');
+    assert.equal(fails[0].context.expectedRemapped, 'Monthly');
+  });
+
+  it('does NOT fire when a utilization cell selectedId is the mapped value', () => {
+    const blob = {
+      services: { s1: {
+        serviceCode: 'workSpacesCore',
+        estimateFor: 'workSpacesCoreTemplate',
+        calculationComponents: {
+          columnFormIPM_1: {
+            value: [
+              { 'Running Mode': { value: { selectedId: 'Monthly' } } },  // mapped — correct
+            ],
+          },
+        },
+      } },
+    };
+    const r = canRehydrate({ savedBlob: blob, manifest: new Map(), perServiceDefinitions: PER_SVC });
+    const fails = (r.services[0]?.failures || []).filter(f => f.predicate === 'column-form-unremapped-value');
+    assert.equal(fails.length, 0);
+  });
+
+  it('is a no-op when the columnFormIPM has no remap block', () => {
+    const noRemapDef = {
+      serviceCode: 'svc',
+      templates: [{
+        id: 'tpl',
+        cards: [{
+          inputSection: {
+            components: [
+              { id: 'columnFormIPM_1', type: 'input', subType: 'columnFormIPM', label: 'Nodes' },
+            ],
+          },
+        }],
+      }],
+    };
+    const blob = {
+      services: { s1: {
+        serviceCode: 'svc',
+        estimateFor: 'tpl',
+        calculationComponents: {
+          columnFormIPM_1: { value: [{ 'Foo': { value: 'Windows' } }] },
+        },
+      } },
+    };
+    const r = canRehydrate({
+      savedBlob: blob, manifest: new Map(),
+      perServiceDefinitions: new Map([['svc', noRemapDef]]),
+    });
+    const fails = (r.services[0]?.failures || []).filter(f => f.predicate === 'column-form-unremapped-value');
+    assert.equal(fails.length, 0,
+      `no remap block → no-op; got ${JSON.stringify(fails)}`);
+  });
+});

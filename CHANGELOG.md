@@ -3,6 +3,73 @@
 All notable changes to the AWS Pricing Calculator MCP server are
 documented here.
 
+## Unreleased
+
+### Fixed
+
+- **columnFormIPM `remap.keyValue` is now applied at build time.** The
+  calculator stores the *remapped* selector value in a saved estimate
+  (the service def's columnFormIPM component carries a
+  `remap.keyValue` map of selector→stored value), and the pricing
+  engine reads that stored form back. The builder was saving the raw
+  selector value the agent picked, so any remap-bearing service
+  rehydrated **read-only at $0**. WorkSpaces Core was the reported
+  case: `Operating System: "Windows"` must save as
+  `"WorkSpaces Core Windows"`, and Running Mode `selectedId:
+  "AlwaysOn"` as `"Monthly"`. `lib/estimate-builder.js` now translates
+  cell values (plain cells and the utilization `selectedId`) through
+  `remap.keyValue` before constructing the payload, for both top-level
+  and sub-service columnFormIPM services. The agent contract is
+  unchanged — agents still pass the selector values `get_service_fields`
+  exposes; `validateConfigKeys` still validates those selector values;
+  the remap happens after validation, so no validator change was
+  needed.
+
+  How it was found, and the dead ends (git shows the fix, not the
+  search): the report was "calc link is read-only." The static linter
+  said `editable` — a false negative — so reproduction required the
+  DOM-cost oracle (the only oracle that sees read-only/$0). Five
+  single-field fixes failed in a row: correcting the utilization
+  `selectedId` to the def default `"Monthly"`, then to the selector
+  value `"AlwaysOn"`, then re-keying the cell `"undefined"`→`"Running
+  Mode"`, then `OS=Any`, then both together. Each stayed $0. The block
+  was methodology: every attempt reconstructed the blob by hand from
+  the service def. The fix came from diffing against a **calculator-
+  produced reference blob** (saved through the real UI), which revealed
+  the values were *remapped* — invisible from the def's selector lists
+  and from `primary-selector-aggregations.json`, both of which expose
+  selector (un-remapped) values. There was no WorkSpaces catalog entry
+  or eval scenario, so this service path had never been validated
+  end-to-end. Verified after the fix: agent passes selector values →
+  lint editable → renders ~$23,328/mo BYOL (matches the ~$26K estimate
+  that prompted the report) and ~$35,640/mo Included, vs. $0 before.
+
+  Two shape facts corrected along the way: (1) the columnFormIPM
+  utilization cell is keyed by its row `selectorId` when the row has
+  one (WorkSpaces Core: `"Running Mode"`), and only by the literal
+  `"undefined"` for rows without a selectorId (RDS-style) — the prior
+  value-shape hint hard-coded `"undefined"` universally. (2) AppStream
+  (the second service in the same estimate) also carries a remap
+  (`Multi Session: false→False`), so the generic builder fix covers it
+  too.
+
+### Added
+
+- **`column-form-unremapped-value` lint predicate**
+  (`lib/can-rehydrate.js`) — defense-in-depth backstop for the remap
+  fix above. Fires read-only when a saved columnFormIPM cell holds a
+  value that is a *key* in the def's `remap.keyValue` (and not also a
+  mapped value — a guard against false positives), i.e. an un-remapped
+  selector value that leaked past the builder via `import_estimate`,
+  external blobs, or a future uncovered service. The builder fix is the
+  cure; this catches bypasses. No-op for services without a remap
+  block.
+
+- **`workspaces-core-minimal` eval scenario** — scripted regression
+  lock asserting `estimate_renders_cost >= $1000` (pre-fix this
+  rendered $0). First end-to-end coverage of the WorkSpaces Core /
+  parent-envelope sub-service save path.
+
 ## [1.2.3] - 2026-06-19
 
 - Improved hint for EC2 pricing strategies & EC2 data transfer
@@ -20,9 +87,7 @@ documented here.
 - Fixed bug NAT Gateway vs. regional NAT Gateway ambiguity
 - Added evaluation of `minValue`, `maxValue`, `allowDecimals`
 
-## [1.2.0] - 2026-06-14
-
-- Fixed bugs [#11](https://github.com/aws-samples/sample-aws-pricing-calculator-mcp/issues/11), [#18](https://github.com/aws-samples/sample-aws-pricing-calculator-mcp/issues/18)
+## 1.2.0 — 2026-06-14
 
 ### Added
 

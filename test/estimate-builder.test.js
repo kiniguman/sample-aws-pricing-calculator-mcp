@@ -294,6 +294,169 @@ describe('toAWSPayload', () => {
     assert.equal(parent.subServices[0].serviceCode, 'standardTopics');
   });
 
+  it('remaps columnFormIPM selector values to stored forms (top-level service)', async () => {
+    // workSpacesCore-shaped definition: the columnFormIPM component carries a
+    // remap.keyValue block. The agent supplies SELECTOR values (Windows,
+    // AlwaysOn); the saved blob must contain the REMAPPED stored forms
+    // (WorkSpaces Core Windows, Monthly) or the estimate rehydrates $0.
+    const WSC_MANIFEST = {
+      awsServices: [
+        { key: 'workSpacesCore', name: 'WorkSpaces Core', serviceCode: 'workSpacesCore' },
+      ],
+    };
+    const WSC_DEFINITION = {
+      version: '0.0.5',
+      serviceCode: 'workSpacesCore',
+      templates: [{ id: 'wsc-template-1' }],
+      cards: [{
+        inputSection: {
+          components: [{
+            type: 'input', subType: 'columnFormIPM', id: 'columnFormIPM',
+            remap: { keyValue: {
+              AlwaysOn: 'Monthly', AutoStop: 'Hourly',
+              Windows: 'WorkSpaces Core Windows', Any: 'WorkSpaces Core Windows BYOL',
+            } },
+          }],
+        },
+      }],
+    };
+    mockFetch([
+      ['manifest/en_US.json', WSC_MANIFEST],
+      ['data/workSpacesCore', WSC_DEFINITION],
+    ]);
+
+    const EB = require('../lib/estimate-builder');
+    const eb = new EB('WSC');
+    eb.addService('workSpacesCore', {
+      region: 'us-east-1',
+      description: 'Single Standard workspace',
+      columnFormIPM: {
+        value: [{
+          'Operating System': { value: 'Windows' },
+          'Number of Nodes': { value: '1' },
+          'Running Mode': { value: { unit: '100', selectedId: 'AlwaysOn' } },
+        }],
+      },
+    });
+
+    const payload = await eb.toAWSPayload();
+    const svc = Object.values(payload.services)[0];
+    const row = svc.calculationComponents.columnFormIPM.value[0];
+    assert.equal(row['Operating System'].value, 'WorkSpaces Core Windows',
+      'plain-cell selector value must be remapped');
+    assert.equal(row['Running Mode'].value.selectedId, 'Monthly',
+      'utilization-cell selectedId must be remapped');
+    assert.equal(row['Number of Nodes'].value, '1',
+      'unmapped value passes through unchanged');
+  });
+
+  it('remaps columnFormIPM values for a sub-service entry', async () => {
+    // workSpacesCore is a sub-service under the amazonWorkSpaces envelope.
+    const WSC_SUB_MANIFEST = {
+      awsServices: [
+        { key: 'amazonWorkSpaces', name: 'Amazon WorkSpaces', serviceCode: 'amazonWorkSpaces',
+          subType: 'subServiceSelector', templates: ['workSpacesCore'] },
+        { key: 'workSpacesCore', name: 'WorkSpaces Core', serviceCode: 'workSpacesCore',
+          subType: 'subService' },
+      ],
+    };
+    const WSC_SUB_DEFINITION = {
+      version: '0.0.5',
+      serviceCode: 'workSpacesCore',
+      templates: [{ id: 'wsc-template-1' }],
+      cards: [{
+        inputSection: {
+          components: [{
+            type: 'input', subType: 'columnFormIPM', id: 'columnFormIPM',
+            remap: { keyValue: { AlwaysOn: 'Monthly', Windows: 'WorkSpaces Core Windows' } },
+          }],
+        },
+      }],
+    };
+    mockFetch([
+      ['manifest/en_US.json', WSC_SUB_MANIFEST],
+      ['data/amazonWorkSpaces', { version: '0.0.1', serviceCode: 'amazonWorkSpaces',
+        templateId: 'wsParentGroup', templates: [{ id: 'wsParentGroup' }] }],
+      ['data/workSpacesCore', WSC_SUB_DEFINITION],
+    ]);
+
+    const EB = require('../lib/estimate-builder');
+    const eb = new EB('WSC sub');
+    eb.addService('workSpacesCore', {
+      region: 'us-east-1',
+      description: 'Single Standard workspace',
+      columnFormIPM: {
+        value: [{
+          'Operating System': { value: 'Windows' },
+          'Running Mode': { value: { unit: '100', selectedId: 'AlwaysOn' } },
+        }],
+      },
+    });
+
+    const payload = await eb.toAWSPayload();
+    const parent = Object.values(payload.services)[0];
+    const sub = parent.subServices[0];
+    const row = sub.calculationComponents.columnFormIPM.value[0];
+    assert.equal(row['Operating System'].value, 'WorkSpaces Core Windows',
+      'sub-service plain-cell value must be remapped');
+    assert.equal(row['Running Mode'].value.selectedId, 'Monthly',
+      'sub-service utilization selectedId must be remapped');
+  });
+
+  it('is idempotent and a no-op when no remap block is present', async () => {
+    // (a) Already-remapped values must not double-remap. (b) A definition
+    // with no remap.keyValue leaves the columnFormIPM untouched.
+    const WSC_MANIFEST = {
+      awsServices: [
+        { key: 'workSpacesCore', name: 'WorkSpaces Core', serviceCode: 'workSpacesCore' },
+        { key: 'aWSLambda', name: 'AWS Lambda', serviceCode: 'aWSLambda' },
+      ],
+    };
+    const WSC_DEFINITION = {
+      version: '0.0.5', serviceCode: 'workSpacesCore',
+      templates: [{ id: 'wsc-template-1' }],
+      cards: [{ inputSection: { components: [{
+        type: 'input', subType: 'columnFormIPM', id: 'columnFormIPM',
+        remap: { keyValue: { Windows: 'WorkSpaces Core Windows', AlwaysOn: 'Monthly' } },
+      }] } }],
+    };
+    mockFetch([
+      ['manifest/en_US.json', WSC_MANIFEST],
+      ['data/workSpacesCore', WSC_DEFINITION],
+      ['data/aWSLambda', FAKE_DEFINITION],
+    ]);
+
+    const EB = require('../lib/estimate-builder');
+    const eb = new EB('Idempotency');
+    // Already-remapped (stored) values supplied directly.
+    eb.addService('workSpacesCore', {
+      region: 'us-east-1', description: 'Already stored',
+      columnFormIPM: { value: [{
+        'Operating System': { value: 'WorkSpaces Core Windows' },
+        'Running Mode': { value: { unit: '100', selectedId: 'Monthly' } },
+      }] },
+    });
+    // No-remap-block service with a columnFormIPM.
+    eb.addService('aWSLambda', {
+      region: 'us-east-1', description: 'No remap',
+      columnFormIPM: { value: [{ 'Some Field': { value: 'Windows' } }] },
+    });
+
+    const payload = await eb.toAWSPayload();
+    const svcs = Object.values(payload.services);
+    const wsc = svcs.find(s => s.serviceCode === 'workSpacesCore');
+    const wscRow = wsc.calculationComponents.columnFormIPM.value[0];
+    assert.equal(wscRow['Operating System'].value, 'WorkSpaces Core Windows',
+      'already-remapped value must not double-remap');
+    assert.equal(wscRow['Running Mode'].value.selectedId, 'Monthly',
+      'already-remapped selectedId must not double-remap');
+
+    const lam = svcs.find(s => s.serviceCode === 'aWSLambda');
+    const lamRow = lam.calculationComponents.columnFormIPM.value[0];
+    assert.equal(lamRow['Some Field'].value, 'Windows',
+      'no remap block means values pass through untouched');
+  });
+
   it('falls back gracefully when definition fetch fails', async () => {
     mockFetch([
       ['manifest/en_US.json', FAKE_MANIFEST],
