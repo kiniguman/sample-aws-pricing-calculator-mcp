@@ -1,109 +1,13 @@
 # Changelog
 
-All notable changes to the AWS Pricing Calculator MCP server are
-documented here.
+All notable changes to the AWS Pricing Calculator MCP server are documented here.
 
-## Unreleased
+## [1.2.4] - 2026-06-25
 
-### Added
-
-- **`column-form-tuple-invalid` lint predicate** (`lib/can-rehydrate.js`)
-  — validates a saved columnFormIPM row's full selector tuple against
-  the region's `primary-selector-aggregations.json` (the calculator's
-  own authoritative set of valid selector combinations). Catches a
-  silent, region-dependent mispricing class the other oracles miss:
-  WorkSpaces Core with `Operating System: Windows` + `Bring Your Own
-  License` is a non-canonical tuple (canonical BYOL uses OS `Any`).
-  Nothing rejected it, and it failed *silently and differently per
-  region* — in il-central-1 it rendered $35,640/mo (the license-
-  *included* rate, a ~53% overcharge — BYOL ignored), in eu-west-1 it
-  rendered **$0** (the reported bug). Both wrong; neither blank nor an
-  error. The predicate fires read-only on both.
-
-  Mechanics worth recording: the saved blob stores *remapped* values
-  (`"WorkSpaces Core Windows"`) but the aggregation file uses *selector*
-  values (`"Windows"`), so the predicate reverse-maps via the
-  component's `remap.keyValue` before comparing. Region resolution is
-  the fragile part — the aggregation URL keys on a Location *label*
-  (`"EU (Ireland)"`) that differs from the blob's `regionName`
-  (`"Europe (Ireland)"`), and columnFormIPM services are sub-services
-  carrying only the region *code* (`eu-west-1`), no label at all. So
-  resolution goes code → `REGIONS[code]` name → parenthetical *city* →
-  match against the service's `metadata.json` `regionAttributes.Location`
-  labels. This self-corrects per service and survives the Europe-vs-EU
-  prefix mismatch. New side-channel `loadSelectorAggregations`
-  (`lib/aws-client.js`) is best-effort and skips cleanly when offline /
-  unresolvable, so it never false-positives. Verified end-to-end: fires
-  on the real broken estimate (eu-west-1 Windows+BYOL → $0) and on the
-  il-central-1 overcharge variant; silent on canonical Any+BYOL.
-
-  Caveat surfaced during the build: an aggregation *(OS, License)* pair
-  can appear region-wide while the *full* tuple (with Bundle/volumes)
-  does not — so the check must match the full tuple, not the pair. A
-  pair-only check would have missed this.
-
-- **`column-form-unremapped-value` lint predicate**
-  (`lib/can-rehydrate.js`) — defense-in-depth backstop for the remap
-  fix below. Fires read-only when a saved columnFormIPM cell holds a
-  value that is a *key* in the def's `remap.keyValue` (and not also a
-  mapped value — a guard against false positives), i.e. an un-remapped
-  selector value that leaked past the builder via `import_estimate`,
-  external blobs, or a future uncovered service. The builder fix is the
-  cure; this catches bypasses. No-op for services without a remap
-  block.
-
-- **`workspaces-core-minimal` eval scenario** — scripted regression
-  lock asserting `estimate_renders_cost >= $1000` (pre-fix this
-  rendered $0). First end-to-end coverage of the WorkSpaces Core /
-  parent-envelope sub-service save path.
-
-### Fixed
-
-- **columnFormIPM `remap.keyValue` is now applied at build time.** The
-  calculator stores the *remapped* selector value in a saved estimate
-  (the service def's columnFormIPM component carries a
-  `remap.keyValue` map of selector→stored value), and the pricing
-  engine reads that stored form back. The builder was saving the raw
-  selector value the agent picked, so any remap-bearing service
-  rehydrated **read-only at $0**. WorkSpaces Core was the reported
-  case: `Operating System: "Windows"` must save as
-  `"WorkSpaces Core Windows"`, and Running Mode `selectedId:
-  "AlwaysOn"` as `"Monthly"`. `lib/estimate-builder.js` now translates
-  cell values (plain cells and the utilization `selectedId`) through
-  `remap.keyValue` before constructing the payload, for both top-level
-  and sub-service columnFormIPM services. The agent contract is
-  unchanged — agents still pass the selector values `get_service_fields`
-  exposes; `validateConfigKeys` still validates those selector values;
-  the remap happens after validation, so no validator change was
-  needed.
-
-  How it was found, and the dead ends (git shows the fix, not the
-  search): the report was "calc link is read-only." The static linter
-  said `editable` — a false negative — so reproduction required the
-  DOM-cost oracle (the only oracle that sees read-only/$0). Five
-  single-field fixes failed in a row: correcting the utilization
-  `selectedId` to the def default `"Monthly"`, then to the selector
-  value `"AlwaysOn"`, then re-keying the cell `"undefined"`→`"Running
-  Mode"`, then `OS=Any`, then both together. Each stayed $0. The block
-  was methodology: every attempt reconstructed the blob by hand from
-  the service def. The fix came from diffing against a **calculator-
-  produced reference blob** (saved through the real UI), which revealed
-  the values were *remapped* — invisible from the def's selector lists
-  and from `primary-selector-aggregations.json`, both of which expose
-  selector (un-remapped) values. There was no WorkSpaces catalog entry
-  or eval scenario, so this service path had never been validated
-  end-to-end. Verified after the fix: agent passes selector values →
-  lint editable → renders ~$23,328/mo BYOL (matches the ~$26K estimate
-  that prompted the report) and ~$35,640/mo Included, vs. $0 before.
-
-  Two shape facts corrected along the way: (1) the columnFormIPM
-  utilization cell is keyed by its row `selectorId` when the row has
-  one (WorkSpaces Core: `"Running Mode"`), and only by the literal
-  `"undefined"` for rows without a selectorId (RDS-style) — the prior
-  value-shape hint hard-coded `"undefined"` universally. (2) AppStream
-  (the second service in the same estimate) also carries a remap
-  (`Multi Session: false→False`), so the generic builder fix covers it
-  too.
+- Added **`column-form-tuple-invalid` lint predicate** - validates columnFormIPM selector tuples against the region's `primary-selector-aggregations.json`. Catches silent, region-dependent mispricing: e.g. WorkSpaces Core `Windows + BYOL` rendered $0 in eu-west-1 and ~$35K (license-included rate) in il-central-1. Both wrong; the predicate fires read-only on both. Reverse-maps through `remap.keyValue` and resolves region codes to location labels via city-parenthetical matching.
+- Added **`column-form-unremapped-value` lint predicate** - defense-in-depth backstop: fires read-only when a saved columnFormIPM cell holds an un-remapped selector value (a `remap.keyValue` key that leaked past the builder).
+- Added **`workspaces-core-minimal` eval scenario** - regression lock asserting `estimate_renders_cost >= $1000` for WorkSpaces Core sub-service save path.
+- Fixed **columnFormIPM** `remap.keyValue` - is now applied at build time. The script was saving raw selector values, but the calculator expects remapped values (e.g. `"Windows"` → `"WorkSpaces Core Windows"`, `"AlwaysOn"` → `"Monthly"`). Any remap-bearing service rehydrated read-only at $0. `lib/estimate-builder.js` now translates cell values through `remap.keyValue` after validation, for both top-level and sub-service columnFormIPM services. Agent contract unchanged — agents still pass selector values from `get_service_fields`.
 
 ## [1.2.3] - 2026-06-19
 
