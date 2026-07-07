@@ -2,6 +2,14 @@
 
 All notable changes to the AWS Pricing Calculator MCP server are documented here.
 
+## [1.2.5] - 2026-07-07
+
+- **EC2 Dedicated Host support** — full estimate generation for host-tenancy configurations via `ec2Enhancement` with `tenancy: "host"`:
+  - Added `standard` to `MODEL_ALIASES` and `SELECTED_OPTION` in `lib/ec2.js`. AWS Pricing Calculator uses `standard` (not `reserved`) for Dedicated Host Reservations; without this mapping the pricing model fell back to On-Demand.
+  - Mapped all Dedicated Host EBS storage fields (`storageTypeDH`, `storageAmountDH`, `gp3IopsDH`, `gp3ThroughputDH`, `iopsDH`, `iops2DH`) in `lib/ec2.js`. Regular storage fields are automatically promoted to DH variants when `tenancy: "host"` and suppressed from the payload.
+  - Exempted `tenancy`, `vcpu`, `physicalCores`, and all DH storage fields from unknown-field validation in `lib/validation.js` (EC2-scoped). These fields are consumed by the EC2 transform or included by the calculator in saved payloads but are not in the public input schema.
+  - Added tool-description hint steering agents to `ec2Enhancement` + `tenancy: "host"` instead of the limited `amazonEc2DedicatedHosts` service.
+
 ## [1.2.4] - 2026-06-25
 
 - Added **`column-form-tuple-invalid` lint predicate** - validates columnFormIPM selector tuples against the region's `primary-selector-aggregations.json`. Catches silent, region-dependent mispricing: e.g. WorkSpaces Core `Windows + BYOL` rendered $0 in eu-west-1 and ~$35K (license-included rate) in il-central-1. Both wrong; the predicate fires read-only on both. Reverse-maps through `remap.keyValue` and resolves region codes to location labels via city-parenthetical matching.

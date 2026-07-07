@@ -37,7 +37,8 @@
     "The dataTransferForEC2 field is a composite widget. Its value must be an array of transfer entries, each with entryType, value, unit, and a region field. Valid entryTypes: INBOUND, OUTBOUND, INTRA_REGION.",
     "Unit must be \"tb_month\" or \"gb_month\".",
     "OUTBOUND entries require a \"toRegion\" field — use \"External\" for internet or \"other\" for other AWS regions. INBOUND entries require a \"fromRegion\" field with the same options. INTRA_REGION requires neither.",
-    "All three entryTypes (INBOUND, OUTBOUND, INTRA_REGION) must be present in the array even if their value is \"0\"."
+    "All three entryTypes (INBOUND, OUTBOUND, INTRA_REGION) must be present in the array even if their value is \"0\".",
+    "For Dedicated Hosts (tenancy: \"host\"): instanceType must be the instance FAMILY only (e.g. \"m5\", \"c6g\"), NOT a specific size (e.g. \"m5.metal\", \"m5.xlarge\"). Do NOT set selectedOS — OS is not configured at the host level."
 
   ],
   "minimalConfig": {
