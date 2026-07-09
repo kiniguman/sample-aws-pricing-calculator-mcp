@@ -9,6 +9,7 @@ All notable changes to the AWS Pricing Calculator MCP server are documented here
   - Mapped all Dedicated Host EBS storage fields (`storageTypeDH`, `storageAmountDH`, `gp3IopsDH`, `gp3ThroughputDH`, `iopsDH`, `iops2DH`) in `lib/ec2.js`. Regular storage fields are automatically promoted to DH variants when `tenancy: "host"` and suppressed from the payload.
   - Exempted `tenancy`, `vcpu`, `physicalCores`, and all DH storage fields from unknown-field validation in `lib/validation.js` (EC2-scoped). These fields are consumed by the EC2 transform or included by the calculator in saved payloads but are not in the public input schema.
   - Added tool-description hint steering agents to `ec2Enhancement` + `tenancy: "host"` instead of the limited `amazonEc2DedicatedHosts` service.
+- Fixed Bug [RDS Oracle](https://github.com/aws-samples/sample-aws-pricing-calculator-mcp/issues/22)
 
 ## [1.2.4] - 2026-06-25
 
