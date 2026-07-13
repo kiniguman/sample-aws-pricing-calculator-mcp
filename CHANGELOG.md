@@ -2,6 +2,11 @@
 
 All notable changes to the AWS Pricing Calculator MCP server are documented here.
 
+## [1.2.7] - 2026-07-13
+
+- Added [MCP tool annotations](https://blog.modelcontextprotocol.io/posts/2026-03-16-tool-annotations/)
+- Set 10mb limit for express [#PR23](https://github.com/aws-samples/sample-aws-pricing-calculator-mcp/pull/23)
+
 ## [1.2.6] - 2026-07-09
 
 - Fixed Bug [RDS Oracle](https://github.com/aws-samples/sample-aws-pricing-calculator-mcp/issues/22)
